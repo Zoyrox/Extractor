@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Sito privato della classe: non deve finire sui motori di ricerca. -->
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="googlebot" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Interrogazioni 5C</title>
+  <meta name="description" content="Date e interrogati della classe 5C Informatica">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1015" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Interrogazioni">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Applica il tema salvato prima del primo disegno (evita il "flash").
+    try {
+      var t = localStorage.getItem('estrazioni5c:tema');
+      if (t === 'chiaro') document.documentElement.dataset.theme = 'light';
+      if (t === 'scuro') document.documentElement.dataset.theme = 'dark';
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Vai al contenuto</a>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="#/" aria-label="Interrogazioni 5C, home">
+        <img class="brand-logo" src="icons/icon.svg" alt="" width="30" height="30">
+        <span class="brand-testo">Interrogazioni<small>5C Informatica</small></span>
+      </a>
+      <nav class="app-nav" aria-label="Navigazione principale">
+        <ul>
+          <li><a href="#/" data-nav="home"><span data-icon="libro"></span>Materie</a></li>
+          <li><a href="#/cerca" data-nav="cerca"><span data-icon="cerca"></span>Il mio nome</a></li>
+          <li><a href="#/registro" data-nav="registro"><span data-icon="storia"></span>Registro</a></li>
+          <li><a href="#/staff" data-nav="staff"><span data-icon="scudo"></span>Staff</a></li>
+        </ul>
+      </nav>
+      <div class="header-azioni">
+        <span id="live" class="live" role="status" aria-live="polite"></span>
+        <button id="btn-installa" class="btn-icon" type="button" aria-label="Installa app" hidden></button>
+        <button id="btn-tema" class="btn-icon" type="button" aria-label="Cambia tema"></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <div id="banner-aggiornamento" class="banner" role="status" hidden></div>
+    <div id="banner-offline" class="banner avviso" role="status" hidden></div>
+    <div id="banner-ios" class="banner" hidden></div>
+    <div id="view">
+      <noscript>Per usare l'app è necessario JavaScript.</noscript>
+    </div>
+  </main>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
