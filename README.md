@@ -73,7 +73,14 @@ L'integrazione applica automaticamente i file in `supabase/migrations/` a ogni p
 ### Strada B: a mano
 
 Supabase → **SQL Editor** → **New query** → incolla tutto `supabase/schema.sql` → **Run**.
-(Se usi questa strada, scollega l'integrazione GitHub o rimuovi la cartella `supabase/migrations/`, altrimenti al primo push lo schema verrebbe rieseguito e fallirebbe.)
+
+### Passare dalla strada B alla strada A (aggiornamenti automatici)
+
+La migrazione `20261112030000_azioni_multiple_ordine_backup.sql` registra le migrazioni precedenti nella cronologia di Supabase (`supabase_migrations.schema_migrations`). È **idempotente**: si può rieseguire senza errori. Dopo averla eseguita a mano:
+
+1. Attiva **Deploy to production** nell'integrazione GitHub (Working directory `.`, branch `main`).
+2. Da quel momento ogni nuovo file in `supabase/migrations/` pubblicato su `main` viene applicato da solo; non serve più copiare SQL.
+3. Le nuove migrazioni vanno sempre scritte in modo idempotente (`create or replace`, `if not exists`), così un'eventuale doppia esecuzione non fa danni.
 
 ## 3. Realtime
 
@@ -170,11 +177,15 @@ Per attivarla: GitHub → **Settings → Secrets and variables → Actions** →
 1. **Admin**: *Staff → Elenco studenti → Carica JSON*. Formato `[{"nome":"Mario","cognome":"Rossi"}, …]`; per provare c'è `dati-esempio.json`. Prima di applicare vedi l'anteprima (aggiunti, modificati o riattivati, disattivati).
 2. **Admin**: *Nuova materia* → *Sessioni ed estrazioni* → *Nuove sessioni*: più date insieme, ognuna con argomento e numero di interrogati.
 3. Facoltativo: *Volontari / aggiungi* per inserire **più persone insieme**, come volontari o messe a mano per quel giorno. Se i posti non bastano, l'app propone di aumentarli.
-4. In classe, sul proiettore o sul telefono: **Estrai N**. Il server sceglie e salva; la **roulette** gira tra i nomi del sorteggio (in ordine alfabetico, si vedono i nomi prima e dopo) e si ferma sull'estratto, una persona alla volta (≈3 s), con *Salta animazione* e *Salta tutto*.
+4. In classe, sul proiettore o sul telefono: **Estrai N**. Il server sceglie e salva; la **roulette** (un cilindro di nomi in ordine alfabetico, in cui si vedono i nomi prima e dopo) gira, rallenta a lungo e si ferma sull'estratto, con coriandoli. In alto si sceglie la velocità (*Veloce* ≈3 s, *Normale* ≈6,5 s, *Teatrale* ≈10 s), si attivano o disattivano i suoni e si passa a schermo intero (modalità proiettore, automatica se il browser lo consente). Tutte e tre le scelte vengono ricordate sul dispositivo. Alla fine compare un riepilogo numerato da proiettare o fotografare. *Salta animazione* e *Salta tutto* restano disponibili.
+   **Azioni rapide**: spunta le caselle accanto ai nomi (o *Seleziona tutti* su una sessione) e usa la barra in basso: *Interrogati*, *Assenti*, *Rimandati*, *Assegnati*, *Sposta…* (con aumento dei posti se servono), *Rimuovi*. Tutto in un'unica operazione, registrata nel registro modifiche.
+   **Ordina**: su una sessione, trascina i nomi dalla maniglia (o usa le frecce) per decidere chi va per primo, poi *Salva ordine*. I compagni vedono lo stesso ordine.
    *Copia in altra materia*: copia gli interrogati di una sessione (es. Italiano del 16/11) in una sessione di un'altra materia, esistente o nuova con la stessa data (la nuova la può creare solo l'admin). Chi è già in elenco in quella materia viene saltato.
 5. Imprevisti: **Gestisci** su una persona → *Interrogato*, *Assente*, *Rimandato* (con motivo), *Sposta ad altra data* o *Rimuovi*. Assenti e rimandati finiscono in **Da riassegnare**, dove si sceglie la nuova data.
 6. *Annulla ultima estrazione* (motivo obbligatorio) riporta nel sorteggio le persone di quell'estrazione.
-7. I compagni vedono tutto subito, con i badge di stato (icona + testo) e il **registro modifiche** (chi, cosa, quando, perché).
+7. I compagni vedono tutto subito, con i badge di stato (icona + testo) e il **registro modifiche** (chi, cosa, quando, perché). Chi in *Il mio nome* spunta "Ricorda il mio nome" vede **le proprie date in cima alla home**.
+8. **Password dimenticata** (staff): dal form di accesso, *Password dimenticata?* → arriva un link via email → si sceglie la nuova password. Serve che l'indirizzo del sito sia tra i *Redirect URLs* di Supabase (punto 4).
+9. **Backup** (admin): *Staff → Backup*. Ogni lunedì alle 03:00 UTC il database salva da solo una copia di tutti i dati (le ultime 12, con l'estensione `pg_cron`). *Scarica backup ora* crea e scarica un JSON. Il file contiene i nomi: conservalo in un posto privato, mai nel repository. Il codice di classe non è incluso.
 
 **Pool di estrazione** (per materia): studenti attivi, non già presenti in nessuna sessione della materia (in qualunque stato) e non esclusi a mano.
 
@@ -238,7 +249,6 @@ python3 scripts/genera-icone.py
 
 ## Idee per il futuro (non implementate)
 
-- "Password dimenticata" per lo staff (`resetPasswordForEmail` di Supabase Auth).
 - Notifiche push ("domani sei interrogato"): richiederebbero un servizio push e una Edge Function.
 - Statistiche per materia (quante volte ciascuno è stato interrogato) e pianificazione automatica del calendario.
 - File `.ics` da importare nel calendario del telefono per le proprie date.

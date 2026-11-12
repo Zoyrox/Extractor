@@ -20,6 +20,12 @@ export const prefs = {
   set codice(v) { scrivi('codice', v); },
   get mioNome() { return leggi('mio-nome'); },   // ultima ricerca "cerca il mio nome"
   set mioNome(v) { scrivi('mio-nome', v); },
+  get velocitaEstrazione() { return leggi('velocita') || 'normale'; },  // veloce | normale | teatrale
+  set velocitaEstrazione(v) { scrivi('velocita', v); },
+  get suoni() { return leggi('suoni') !== '0'; },
+  set suoni(v) { scrivi('suoni', v ? '1' : '0'); },
+  get schermoIntero() { return leggi('schermo-intero') !== '0'; },
+  set schermoIntero(v) { scrivi('schermo-intero', v ? '1' : '0'); },
   get iosAvvisoChiuso() { return leggi('ios-avviso') === '1'; },
   set iosAvvisoChiuso(v) { scrivi('ios-avviso', v ? '1' : null); },
 };

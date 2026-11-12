@@ -130,6 +130,12 @@ export const api = {
     if (error) throw new Error(messaggioErrore(error));
     return data;
   },
+  bulk: (ids, azione, target, motivo, aumentaMax) =>
+    rpc('staff_bulk', { p_assignment_ids: ids, p_azione: azione, p_target_session: target ?? null, p_motivo: motivo || null, p_aumenta_max: !!aumentaMax }),
+  riordina: (sessionId, ids) => rpc('staff_reorder', { p_session_id: sessionId, p_assignment_ids: ids }),
+  backupOra: () => rpc('admin_backup_now'),
+  elencoBackup: () => rpc('admin_list_backups'),
+  backup: (id) => rpc('admin_get_backup', { p_id: id }),
   stato: (assignmentId, stato, motivo) => rpc('staff_set_state', { p_assignment_id: assignmentId, p_stato: stato, p_motivo: motivo || null }),
   rimuovi: (assignmentId, motivo) => rpc('staff_remove_assignment', { p_assignment_id: assignmentId, p_motivo: motivo || null }),
   sposta: (assignmentId, target, motivo) =>

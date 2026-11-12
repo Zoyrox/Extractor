@@ -16,15 +16,18 @@ export const vistaEl = () => document.getElementById('view');
  * aggiornamento e l'altro: quelli nuovi o cambiati vengono evidenziati.
  * Restituisce { aggiorna(motivo), distruggi() } per il router e il realtime.
  */
-export function creaVista(container, { carica, disegna, righeSkeleton = 3 }) {
+export function creaVista(container, { carica, disegna, righeSkeleton = 3, inPausa = () => false }) {
   let firme = null;          // null = primo caricamento non ancora riuscito
   let attivo = true;
   let inCorso = false;
   let daRifare = false;
+  let ultimiDati = null;
 
   async function aggiorna(motivo = 'iniziale') {
     if (!attivo) return;
     if (inCorso) { daRifare = true; return; }
+    // Es. trascinamento in corso: riprova tra poco senza toccare il DOM.
+    if (firme !== null && inPausa()) { setTimeout(() => aggiorna(motivo), 400); return; }
     inCorso = true;
     const primo = firme === null;
     if (primo) mount(container, skeleton(righeSkeleton));
@@ -32,6 +35,8 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3 }) {
       const dati = await carica();
       if (!attivo) return;
       if (dati?.generato_il) segnalaFreschezza(dati.generato_il);
+      if (inPausa() && !primo) { inCorso = false; setTimeout(() => aggiorna(motivo), 400); return; }
+      ultimiDati = dati;
       const nodo = disegna(dati);
       container.classList.add('in-aggiornamento');
       mount(container, nodo);
@@ -66,6 +71,8 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3 }) {
     aggiorna,
     /** Forza il ricaricamento completo (es. cambio filtri). */
     ricarica() { firme = null; return aggiorna('ricarica'); },
+    /** Ridisegna con gli ultimi dati, senza chiamare il server (cambi di sola interfaccia). */
+    ridisegna() { if (ultimiDati && attivo) mount(container, disegna(ultimiDati)); },
     distruggi() { attivo = false; },
   };
 }

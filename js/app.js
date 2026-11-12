@@ -60,6 +60,8 @@ rotta('/staff/materia/:slug', staff.staffMateria);
 rotta('/staff/studenti', staff.staffStudenti);
 rotta('/staff/utenti', staff.staffUtenti);
 rotta('/staff/impostazioni', staff.staffImpostazioni);
+rotta('/staff/backup', staff.staffBackup);
+rotta('/staff/nuova-password', staff.staffNuovaPassword);
 
 let primaNavigazione = true;
 function dopoCambioRotta(path) {
@@ -105,14 +107,17 @@ async function avvio() {
   await caricaProfilo();
   if (/access_token=|error_description=|error_code=/.test(hashIniziale)) {
     const p = new URLSearchParams(hashIniziale.slice(1));
+    const recupero = p.get('type') === 'recovery';
     if (p.get('error_description')) toast(`Link non valido o scaduto: ${p.get('error_description')}`, 'errore', 8000);
-    else toast('Email confermata.', 'ok');
-    history.replaceState(null, '', location.pathname + '#/staff');
+    else if (!recupero) toast('Email confermata.', 'ok');
+    // Link "password dimenticata": porta alla pagina per sceglierne una nuova.
+    history.replaceState(null, '', location.pathname + (recupero && !p.get('error_description') ? '#/staff/nuova-password' : '#/staff'));
   }
 
   // Login/logout dello staff: ricarica profilo e vista corrente.
   let utenteId = sessione.utente?.id || null;
   sb.auth.onAuthStateChange((evento, session) => {
+    if (evento === 'PASSWORD_RECOVERY') setTimeout(() => { location.hash = '#/staff/nuova-password'; }, 0);
     const nuovoId = session?.user?.id || null;
     if (nuovoId === utenteId) return;
     utenteId = nuovoId;

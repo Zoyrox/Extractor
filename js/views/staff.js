@@ -120,6 +120,32 @@ function formAccesso() {
       campo('Password', password, modo === 'registrati' ? 'Almeno 8 caratteri.' : null),
       errore, invia);
 
+    if (modo === 'recupera') {
+      const em = h('input', { type: 'email', autocomplete: 'email', required: true });
+      const err = h('p', { class: 'campo-errore', role: 'alert' });
+      const btn = h('button', { class: 'btn btn-primary btn-blocco', type: 'submit' }, 'Invia link per reimpostare');
+      mount(cont, h('form', {
+        class: 'card',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          btn.disabled = true; err.textContent = '';
+          const { error } = await sb.auth.resetPasswordForEmail(em.value.trim(), { redirectTo: location.origin + location.pathname });
+          btn.disabled = false;
+          if (error) { err.textContent = traduciErroreAuth(error); return; }
+          mount(cont, h('div', { class: 'card' },
+            h('h2', {}, 'Controlla la tua email'),
+            h('p', {}, 'Se l\'indirizzo è registrato, riceverai un link per scegliere una nuova password.'),
+            h('button', { class: 'btn', onclick: () => { modo = 'accedi'; disegna(); } }, 'Torna all\'accesso')));
+        },
+      },
+        h('h2', {}, 'Password dimenticata'),
+        h('p', { class: 'muted piccolo' }, 'Inserisci l\'email del tuo account staff: ti mandiamo un link per reimpostare la password.'),
+        campo('Email', em), err, btn,
+        h('button', { class: 'btn btn-ghost btn-blocco', type: 'button', style: 'margin-top:.5rem', onclick: () => { modo = 'accedi'; disegna(); } }, 'Annulla')));
+      em.focus();
+      return;
+    }
+
     const tab = (id, testo) => h('button', {
       type: 'button', role: 'tab', 'aria-selected': String(modo === id),
       onclick: () => { modo = id; disegna(); },
@@ -128,6 +154,10 @@ function formAccesso() {
     mount(cont,
       h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Accesso o registrazione' }, tab('accedi', 'Accedi'), tab('registrati', 'Registrati')),
       form,
+      modo === 'accedi'
+        ? h('p', { style: 'margin-top:.75rem;text-align:center' },
+            h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => { modo = 'recupera'; disegna(); } }, 'Password dimenticata?'))
+        : null,
       modo === 'registrati'
         ? h('p', { class: 'muted piccolo', style: 'margin-top:1rem' }, 'La registrazione è riservata ai rappresentanti. Un account appena creato non ha alcun permesso finché l\'amministratore non lo approva.')
         : null);
@@ -193,7 +223,8 @@ function dashboard() {
               h('div', { class: 'griglia tre' },
                 linkCard('#/staff/studenti', 'gruppo', 'Elenco studenti', 'Carica il JSON, aggiungi, modifica o disattiva.'),
                 linkCard('#/staff/utenti', 'scudo', 'Staff e rappresentanti', inAttesa ? `${inAttesa} in attesa di approvazione` : 'Approva o revoca i rappresentanti.', inAttesa > 0),
-                linkCard('#/staff/impostazioni', 'impostazioni', 'Codice di classe', 'Imposta o cambia il codice per i compagni.')))
+                linkCard('#/staff/impostazioni', 'impostazioni', 'Codice di classe', 'Imposta o cambia il codice per i compagni.'),
+                linkCard('#/staff/backup', 'download', 'Backup', 'Copie automatiche settimanali e download dei dati.')))
           : null);
     },
   });
@@ -245,16 +276,124 @@ async function eliminaMateria(m) {
 export function staffMateria({ slug }) {
   if (!guardia()) return;
   const cont = h('div');
-  mount(vistaEl(), cont);
-  const vista = creaVista(cont, {
+  const barra = h('div', { class: 'barra-selezione', hidden: true, role: 'region', 'aria-label': 'Azioni sulle persone selezionate' });
+  mount(vistaEl(), cont, barra);
+  // Stato della pagina, conservato tra un aggiornamento realtime e l'altro.
+  const stato = { sel: new Map(), riordino: null, ordine: null, dati: null, trascinando: false };
+  let vista = null;
+  const aggiornaBarra = () => disegnaBarra(barra, stato, () => vista.aggiorna('azione'));
+  vista = creaVista(cont, {
     carica: () => api.staffMateria(slug),
-    disegna: (d) => disegnaGestione(d, vista),
+    disegna: (d) => {
+      stato.dati = d;
+      // Togli dalla selezione chi non c'è più (es. rimosso da un'altra scheda).
+      const presenti = new Map(d.sessioni.flatMap((s) => s.assegnazioni.map((a) => [a.id, { a, s }])));
+      for (const id of [...stato.sel.keys()]) {
+        if (presenti.has(id)) stato.sel.set(id, presenti.get(id)); else stato.sel.delete(id);
+      }
+      const nodo = disegnaGestione(d, vista, stato, aggiornaBarra);
+      queueMicrotask(aggiornaBarra);
+      return nodo;
+    },
     righeSkeleton: 4,
+    inPausa: () => stato.trascinando,
   });
-  return vista;
+  return {
+    aggiorna: (m) => vista.aggiorna(m),
+    distruggi: () => { vista.distruggi(); document.body.classList.remove('con-selezione'); },
+  };
 }
 
-function disegnaGestione(d, vista) {
+/** Barra in basso con le azioni rapide sulle persone selezionate. */
+function disegnaBarra(barra, stato, aggiorna) {
+  const n = stato.sel.size;
+  document.body.classList.toggle('con-selezione', n > 0);
+  if (!n) { barra.hidden = true; barra.replaceChildren(); return; }
+  const ids = [...stato.sel.keys()];
+  const svuota = () => {
+    stato.sel.clear();
+    document.querySelectorAll('.persona .sel').forEach((c) => { c.checked = false; c.closest('.persona').classList.remove('selezionata'); });
+    disegnaBarra(barra, stato, aggiorna);
+  };
+  const fatto = () => { stato.sel.clear(); aggiorna(); };
+  const eseguiStato = async (stat, etichetta) => {
+    const r = await conferma({ titolo: `${etichetta}: ${n} ${n === 1 ? 'persona' : 'persone'}?`, messaggio: nomiSelezionati(stato), ok: 'Conferma', chiediMotivo: true });
+    if (r && await esegui(() => api.bulk(ids, stat, null, r.motivo), `${n} ${n === 1 ? 'aggiornata' : 'aggiornate'}`)) fatto();
+  };
+  const az = (ic, testo, fn, extra = {}) => h('button', { class: 'btn btn-sm', type: 'button', onclick: fn, ...extra }, icon(ic, 16), testo);
+  barra.replaceChildren(
+    h('div', { class: 'riga' },
+      h('strong', {}, `${n} ${n === 1 ? 'selezionata' : 'selezionate'}`),
+      h('span', { class: 'spazio' }),
+      h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: svuota }, icon('x', 16), 'Deseleziona')),
+    h('div', { class: 'riga-azioni' },
+      az('check', 'Interrogati', () => eseguiStato('interrogato', 'Segna come interrogati')),
+      az('x', 'Assenti', () => eseguiStato('assente', 'Segna come assenti')),
+      az('rimanda', 'Rimandati', () => eseguiStato('rimandato', 'Segna come rimandati')),
+      az('calendario', 'Assegnati', () => eseguiStato('assegnato', 'Riporta ad assegnati')),
+      az('sposta', 'Sposta…', async () => { if (await dialogoSpostaMolti(stato, ids)) fatto(); }),
+      az('cestino', 'Rimuovi', async () => {
+        const r = await conferma({
+          titolo: `Rimuovere ${n} ${n === 1 ? 'persona' : 'persone'} dal giorno?`,
+          messaggio: `${nomiSelezionati(stato)}. Torneranno nel sorteggio della materia.`,
+          ok: 'Rimuovi', pericolo: true, chiediMotivo: true,
+        });
+        if (r && await esegui(() => api.bulk(ids, 'rimuovi', null, r.motivo), 'Rimossi')) fatto();
+      }, { style: 'color:var(--danger)' })));
+  barra.hidden = false;
+}
+
+function nomiSelezionati(stato) {
+  return [...stato.sel.values()].map(({ a }) => nomeCompleto(a)).join(', ');
+}
+
+async function dialogoSpostaMolti(stato, ids) {
+  const d = stato.dati;
+  const n = ids.length;
+  return dialogo(`Sposta ${n} ${n === 1 ? 'persona' : 'persone'}`, (chiudi) => {
+    const opzioni = d.sessioni.map((s) => {
+      const giaDentro = ids.filter((id) => s.assegnazioni.some((a) => a.id === id)).length;
+      return { s, liberi: s.max_interrogati - s.assegnazioni.length, servono: n - giaDentro };
+    });
+    const sel = h('select', { required: true },
+      h('option', { value: '' }, 'Scegli una sessione…'),
+      opzioni.map(({ s, liberi }) => h('option', { value: String(s.id) },
+        `${dataCompleta(s.data)}${s.data < d.oggi ? ' (passata)' : ''} · ${Math.max(0, liberi)} liberi${s.argomento ? ' · ' + testoBreve(s.argomento) : ''}`)));
+    const aumenta = h('input', { type: 'checkbox', checked: true });
+    const rigaAumenta = h('label', { class: 'check', hidden: true }, aumenta, 'Aumenta i posti se non bastano');
+    sel.addEventListener('change', () => {
+      const o = opzioni.find((x) => String(x.s.id) === sel.value);
+      rigaAumenta.hidden = !o || o.servono <= o.liberi;
+    });
+    const motivo = h('textarea', { rows: 2, maxlength: 200, placeholder: 'Facoltativo (es. "gita")' });
+    return h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        if (!sel.value) return;
+        const r = await esegui(() => api.bulk(ids, 'sposta', Number(sel.value), motivo.value.trim(), aumenta.checked), `${n} ${n === 1 ? 'spostata' : 'spostate'}`);
+        if (r) chiudi(true);
+      },
+    },
+      h('p', { class: 'muted piccolo' }, nomiSelezionati(stato)),
+      campo('Nuova data', sel), rigaAumenta, campo('Motivo', motivo, 'Visibile a tutti nel registro modifiche.'),
+      h('div', { class: 'azioni' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Sposta')));
+  });
+}
+
+/** Casella di selezione per una persona. */
+function casella(a, s, stato, aggiornaBarra) {
+  const cb = h('input', { type: 'checkbox', class: 'sel', 'aria-label': `Seleziona ${nomeCompleto(a)}`, checked: stato.sel.has(a.id) });
+  cb.addEventListener('change', () => {
+    if (cb.checked) stato.sel.set(a.id, { a, s }); else stato.sel.delete(a.id);
+    cb.closest('.persona').classList.toggle('selezionata', cb.checked);
+    aggiornaBarra();
+  });
+  return cb;
+}
+
+function disegnaGestione(d, vista, stato, aggiornaBarra) {
   const aggiorna = () => vista.aggiorna('azione');
   const oggi = d.oggi;
   const daRiassegnare = d.sessioni.flatMap((s) => s.assegnazioni
@@ -273,7 +412,8 @@ function disegnaGestione(d, vista) {
       ? h('section', { class: 'card', style: 'margin-bottom:1rem;border-color:var(--b-rimandato-fg)', 'data-key': 'riassegna', 'data-firma': firma(daRiassegnare.map((a) => a.id)) },
           h('h2', { class: 'riga' }, icon('esclamativo', 18), `Da riassegnare (${daRiassegnare.length})`),
           h('ul', { class: 'persone' }, daRiassegnare.map((a) =>
-            h('li', { class: 'persona' },
+            h('li', { class: `persona ${stato.sel.has(a.id) ? 'selezionata' : ''}` },
+              casella(a, a.sessione, stato, aggiornaBarra),
               h('span', { class: 'nome' }, nomeCompleto(a)), badge(a.stato),
               h('span', { class: 'muted piccolo' }, `dal ${dataCompleta(a.sessione.data)}`),
               h('button', { class: 'btn btn-sm btn-primary azioni-persona', onclick: async () => { if (await dialogoSposta(a, d, true)) aggiorna(); } }, icon('calendario', 16), 'Nuova data'),
@@ -283,19 +423,77 @@ function disegnaGestione(d, vista) {
     d.sessioni.length === 0
       ? vuoto('Nessuna sessione', sessione.isAdmin ? 'Crea le sessioni con data, argomento e numero di interrogati.' : 'L\'amministratore non ha ancora creato sessioni.')
       : h('div', { class: 'stack' },
-          future.map((s, i) => cardGestione(s, d, aggiorna, i === 0)),
+          future.map((s, i) => cardGestione(s, d, aggiorna, i === 0, false, stato, aggiornaBarra, vista)),
           passate.length
             ? dettagli(`staff-passate-${d.materia.slug}`, false,
                 h('span', { class: 'btn btn-ghost btn-sm' }, icon('orologio', 16), `Sessioni passate (${passate.length})`),
-                h('div', { class: 'stack', style: 'margin-top:.75rem' }, passate.map((s) => cardGestione(s, d, aggiorna, false, true))))
+                h('div', { class: 'stack', style: 'margin-top:.75rem' }, passate.map((s) => cardGestione(s, d, aggiorna, false, true, stato, aggiornaBarra, vista))))
             : null),
 
     sessione.isAdmin ? sezioneEsclusi(d, aggiorna) : null);
 }
 
-function cardGestione(s, d, aggiorna, prossima, passata = false) {
+function cardGestione(s, d, aggiorna, prossima, passata, stato, aggiornaBarra, vista) {
   const liberi = s.max_interrogati - s.assegnazioni.length;
   const estraibili = Math.min(liberi, d.pool.length);
+  const inRiordino = stato.riordino === s.id;
+  const ridisegna = () => vista.ridisegna();
+
+  let elenco;
+  if (inRiordino) {
+    elenco = listaRiordino(s, stato);
+  } else if (s.assegnazioni.length) {
+    elenco = h('ul', { class: 'persone' }, s.assegnazioni.map((a) =>
+      h('li', { class: `persona ${stato.sel.has(a.id) ? 'selezionata' : ''}`, 'data-key': `a-${a.id}`, 'data-firma': firma([a.stato, a.nota, a.volontario]) },
+        casella(a, s, stato, aggiornaBarra),
+        h('span', { class: 'nome' }, nomeCompleto(a)),
+        badge(a.stato),
+        a.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
+        h('button', {
+          class: 'btn btn-sm azioni-persona', 'aria-label': `Azioni per ${nomeCompleto(a)}`,
+          onclick: async () => { if (await dialogoAzioni(a, s, d)) aggiorna(); },
+        }, icon('menu', 16), 'Gestisci'),
+        a.nota ? h('span', { class: 'nota' }, 'Motivo: ', a.nota) : null)));
+  } else {
+    elenco = h('p', { class: 'muted piccolo', style: 'margin:.75rem 0 0' }, 'Nessuno ancora assegnato.');
+  }
+
+  const tuttiSelezionati = s.assegnazioni.length > 0 && s.assegnazioni.every((a) => stato.sel.has(a.id));
+  const azioni = inRiordino
+    ? h('div', { class: 'azioni-card' },
+        h('button', {
+          class: 'btn btn-primary btn-sm',
+          onclick: async () => {
+            if (await esegui(() => api.riordina(s.id, stato.ordine), 'Ordine salvato')) { stato.riordino = null; stato.ordine = null; aggiorna(); }
+          },
+        }, icon('check', 16), 'Salva ordine'),
+        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { stato.riordino = null; stato.ordine = null; ridisegna(); } }, 'Annulla'))
+    : h('div', { class: 'azioni-card' },
+        liberi > 0
+          ? h('button', {
+              class: 'btn btn-primary btn-sm', disabled: estraibili === 0,
+              title: estraibili === 0 ? 'Nessuno studente disponibile nel sorteggio' : null,
+              onclick: () => avviaEstrazione(s, d, estraibili, aggiorna),
+            }, icon('dado', 16), `Estrai ${estraibili || ''}`.trim())
+          : h('span', { class: 'tag' }, icon('check', 14), 'Sessione al completo'),
+        h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoAggiungi(s, d)) aggiorna(); } }, icon('mano', 16), 'Volontari / aggiungi'),
+        s.assegnazioni.length
+          ? h('button', {
+              class: 'btn btn-sm',
+              onclick: () => {
+                for (const a of s.assegnazioni) { if (tuttiSelezionati) stato.sel.delete(a.id); else stato.sel.set(a.id, { a, s }); }
+                ridisegna();
+              },
+            }, icon('seleziona', 16), tuttiSelezionati ? 'Deseleziona tutti' : 'Seleziona tutti')
+          : null,
+        s.assegnazioni.length > 1
+          ? h('button', { class: 'btn btn-sm', onclick: () => { stato.riordino = s.id; stato.ordine = s.assegnazioni.map((a) => a.id); ridisegna(); } }, icon('ordina', 16), 'Ordina')
+          : null,
+        s.assegnazioni.some((a) => a.stato === 'assegnato' || a.stato === 'interrogato')
+          ? h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoCopia(s, d)) aggiorna(); } }, icon('sposta', 16), 'Copia in altra materia')
+          : null,
+        s.ultima_estrazione ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await annullaEstrazione(s)) aggiorna(); } }, icon('annulla', 16), 'Annulla ultima estrazione') : null);
+
   return h('article', {
     class: `card ${prossima ? 'prossima' : ''} ${passata ? 'passata' : ''}`,
     'data-key': `s-${s.id}`, 'data-firma': firma([s.data, s.argomento, s.max_interrogati, s.assegnazioni]),
@@ -306,36 +504,82 @@ function cardGestione(s, d, aggiorna, prossima, passata = false) {
       h('div', { style: 'flex:1;min-width:0' },
         h('h3', {}, dataTitolo(s.data)),
         s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
-        h('p', { class: 'posti' }, `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati`)),
+        h('p', { class: 'posti' }, inRiordino ? 'Trascina o usa le frecce per scegliere chi va per primo' : `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati`)),
       h('button', { class: 'btn-icon sm', 'aria-label': `Modifica sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await dialogoSessione(s)) aggiorna(); } }, icon('matita', 18)),
       sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Elimina sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await eliminaSessione(s)) aggiorna(); } }, icon('cestino', 18)) : null),
+    elenco,
+    azioni);
+}
 
-    s.assegnazioni.length
-      ? h('ul', { class: 'persone' }, s.assegnazioni.map((a) =>
-          h('li', { class: 'persona', 'data-key': `a-${a.id}`, 'data-firma': firma([a.stato, a.nota, a.volontario]) },
-            h('span', { class: 'nome' }, nomeCompleto(a)),
-            badge(a.stato),
-            a.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
-            h('button', {
-              class: 'btn btn-sm azioni-persona', 'aria-label': `Azioni per ${nomeCompleto(a)}`,
-              onclick: async () => { if (await dialogoAzioni(a, s, d)) aggiorna(); },
-            }, icon('menu', 16), 'Gestisci'),
-            a.nota ? h('span', { class: 'nota' }, 'Motivo: ', a.nota) : null)))
-      : h('p', { class: 'muted piccolo', style: 'margin:.75rem 0 0' }, 'Nessuno ancora assegnato.'),
-
-    h('div', { class: 'azioni-card' },
-      liberi > 0
-        ? h('button', {
-            class: 'btn btn-primary btn-sm', disabled: estraibili === 0,
-            title: estraibili === 0 ? 'Nessuno studente disponibile nel sorteggio' : null,
-            onclick: () => avviaEstrazione(s, d, estraibili, aggiorna),
-          }, icon('dado', 16), `Estrai ${estraibili || ''}`.trim())
-        : h('span', { class: 'tag' }, icon('check', 14), 'Sessione al completo'),
-      h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoAggiungi(s, d)) aggiorna(); } }, icon('mano', 16), 'Volontari / aggiungi'),
-      s.assegnazioni.some((a) => a.stato === 'assegnato' || a.stato === 'interrogato')
-        ? h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoCopia(s, d)) aggiorna(); } }, icon('sposta', 16), 'Copia in altra materia')
-        : null,
-      s.ultima_estrazione ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await annullaEstrazione(s)) aggiorna(); } }, icon('annulla', 16), 'Annulla ultima estrazione') : null));
+/** Elenco in modalità "Ordina": maniglia per trascinare + frecce su/giù. */
+function listaRiordino(s, stato) {
+  const perId = new Map(s.assegnazioni.map((a) => [a.id, a]));
+  // Tiene l'ordine scelto anche se nel frattempo arrivano aggiornamenti.
+  stato.ordine = [...stato.ordine.filter((id) => perId.has(id)), ...s.assegnazioni.map((a) => a.id).filter((id) => !stato.ordine.includes(id))];
+  const ul = h('ul', { class: 'persone' });
+  const sposta = (da, a) => {
+    if (a < 0 || a >= stato.ordine.length || da === a) return;
+    const [x] = stato.ordine.splice(da, 1);
+    stato.ordine.splice(a, 0, x);
+    disegna(a);
+  };
+  function disegna(focusIndice = null) {
+    ul.replaceChildren(...stato.ordine.map((id, i) => {
+      const a = perId.get(id);
+      return h('li', { class: 'persona trascinabile' },
+        h('span', { class: 'maniglia', title: 'Trascina', 'aria-hidden': 'true' }, icon('grip', 18)),
+        h('span', { class: 'numero-ordine' }, `${i + 1}.`),
+        h('span', { class: 'nome' }, nomeCompleto(a)),
+        badge(a.stato),
+        h('span', { class: 'azioni-persona riga' },
+          h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': `Sposta su ${nomeCompleto(a)}`, disabled: i === 0, onclick: () => sposta(i, i - 1) }, icon('su', 18)),
+          h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': `Sposta giù ${nomeCompleto(a)}`, disabled: i === stato.ordine.length - 1, onclick: () => sposta(i, i + 1) }, icon('giu', 18))));
+    }));
+    if (focusIndice !== null) {
+      const btns = ul.children[focusIndice]?.querySelectorAll('button');
+      (btns?.[0]?.disabled ? btns?.[1] : btns?.[0])?.focus();
+    }
+  }
+  // Trascinamento con il dito o il mouse (pointer events).
+  ul.addEventListener('pointerdown', (e) => {
+    const man = e.target.closest('.maniglia');
+    if (!man) return;
+    e.preventDefault();
+    const li = man.closest('li');
+    const voci = [...ul.children];
+    const da = voci.indexOf(li);
+    const passo = voci.length > 1 ? voci[1].getBoundingClientRect().top - voci[0].getBoundingClientRect().top : li.offsetHeight;
+    const y0 = e.clientY;
+    let a = da;
+    li.classList.add('trascinata');
+    stato.trascinando = true;
+    man.setPointerCapture(e.pointerId);
+    const muovi = (ev) => {
+      const dy = ev.clientY - y0;
+      li.style.transform = `translateY(${dy}px)`;
+      a = Math.max(0, Math.min(voci.length - 1, da + Math.round(dy / passo)));
+      voci.forEach((v, i) => {
+        if (v === li) return;
+        let sh = 0;
+        if (da < a && i > da && i <= a) sh = -passo;
+        if (da > a && i < da && i >= a) sh = passo;
+        v.style.transform = sh ? `translateY(${sh}px)` : '';
+        v.style.transition = 'transform .15s';
+      });
+    };
+    const fine = () => {
+      stato.trascinando = false;
+      man.removeEventListener('pointermove', muovi);
+      voci.forEach((v) => { v.style.transform = ''; v.style.transition = ''; });
+      li.classList.remove('trascinata');
+      if (a !== da) sposta(da, a); else disegna();
+    };
+    man.addEventListener('pointermove', muovi);
+    man.addEventListener('pointerup', fine, { once: true });
+    man.addEventListener('pointercancel', fine, { once: true });
+  });
+  disegna();
+  return ul;
 }
 
 async function avviaEstrazione(s, d, quanti, aggiorna) {
@@ -929,4 +1173,89 @@ export function staffImpostazioni() {
       campo('Ripeti il codice', c2),
       errore,
       h('div', { class: 'azioni' }, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva codice'))));
+}
+
+// ---------------------------------------------------------------------
+//  Nuova password (dopo il link "password dimenticata")
+// ---------------------------------------------------------------------
+
+export function staffNuovaPassword() {
+  if (!sb) { guardia(); return; }
+  if (!sessione.utente) {
+    mount(vistaEl(), h('div', { class: 'accesso' }, vuoto('Link scaduto o non valido',
+      'Richiedi un nuovo link da "Password dimenticata?".', 'esclamativo',
+      h('a', { class: 'btn btn-primary', href: '#/staff' }, 'Vai all\'accesso'))));
+    return;
+  }
+  const p1 = h('input', { type: 'password', minlength: 8, required: true, autocomplete: 'new-password' });
+  const p2 = h('input', { type: 'password', minlength: 8, required: true, autocomplete: 'new-password' });
+  const err = h('p', { class: 'campo-errore', role: 'alert' });
+  mount(vistaEl(), h('div', { class: 'accesso' },
+    h('h1', {}, 'Nuova password'),
+    h('p', { class: 'muted' }, sessione.utente.email),
+    h('form', {
+      class: 'card',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        if (p1.value !== p2.value) { err.textContent = 'Le due password non coincidono.'; return; }
+        const { error } = await sb.auth.updateUser({ password: p1.value });
+        if (error) { err.textContent = traduciErroreAuth(error); return; }
+        toast('Password aggiornata', 'ok');
+        vai('/staff');
+      },
+    },
+      campo('Nuova password', p1, 'Almeno 8 caratteri.'),
+      campo('Ripeti la password', p2),
+      err,
+      h('button', { class: 'btn btn-primary btn-blocco', type: 'submit' }, 'Salva password'))));
+  p1.focus();
+}
+
+// ---------------------------------------------------------------------
+//  Backup (solo admin)
+// ---------------------------------------------------------------------
+
+function scaricaJson(dati, nome) {
+  const blob = new Blob([JSON.stringify(dati, null, 2) + '\n'], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: nome });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+export function staffBackup() {
+  if (!guardia({ admin: true })) return;
+  const cont = h('div');
+  mount(vistaEl(),
+    indietro('#/staff', 'Area staff'),
+    intestazione('Backup', 'Ogni lunedì il database salva da solo una copia di tutti i dati (le ultime 12). Puoi anche scaricarne una adesso.',
+      h('button', {
+        class: 'btn btn-primary btn-sm',
+        onclick: async () => {
+          const dati = await esegui(() => api.backupOra());
+          if (dati) { scaricaJson(dati, `backup-5c-${oggiRoma()}.json`); toast('Backup creato e scaricato', 'ok'); vista.aggiorna('azione'); }
+        },
+      }, icon('download', 16), 'Scarica backup ora')),
+    cont,
+    h('p', { class: 'muted piccolo', style: 'margin-top:1.5rem' },
+      'Il file contiene nomi, materie, sessioni, assegnazioni e registro: conservalo in un posto privato (non nel repository). ',
+      'Il codice di classe non è incluso.'));
+  const vista = creaVista(cont, {
+    carica: () => api.elencoBackup(),
+    disegna: (lista) => lista.length
+      ? h('ul', { class: 'persone' }, lista.map((b) => h('li', { class: 'persona' },
+          h('span', { class: 'nome' }, dataOraBreve(b.creato_il)),
+          h('span', { class: 'tag' }, b.tipo === 'manuale' ? 'Manuale' : 'Automatico'),
+          h('span', { class: 'muted piccolo' }, `${b.n_studenti} studenti · ${b.n_sessioni} sessioni`),
+          h('button', {
+            class: 'btn btn-sm azioni-persona',
+            onclick: async () => { const d = await esegui(() => api.backup(b.id)); if (d) scaricaJson(d, `backup-5c-${b.creato_il.slice(0, 10)}.json`); },
+          }, icon('download', 16), 'Scarica'))))
+      : vuoto('Nessun backup ancora', 'Il primo backup automatico arriverà lunedì; intanto puoi scaricarne uno adesso.', 'download'),
+  });
+  return vista;
+}
+
+function dataOraBreve(ts) {
+  return new Intl.DateTimeFormat('it-IT', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Rome' }).format(new Date(ts));
 }

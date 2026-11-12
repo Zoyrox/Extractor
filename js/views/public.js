@@ -96,14 +96,41 @@ export function home() {
     h('div', { class: 'azioni', style: 'justify-content:center;margin-top:2rem' }, pulsanteEsci()));
 
   return creaVista(lista, {
-    carica: api.classe,
+    carica: async () => {
+      const mioNome = prefs.mioNome;
+      const [classe, mie] = await Promise.all([
+        api.classe(),
+        mioNome ? api.cerca(mioNome).catch(() => null) : null,
+      ]);
+      return { ...classe, mie };
+    },
     disegna: (d) => {
       if (!d.materie.length) {
         return vuoto('Nessuna materia', 'L\'amministratore non ha ancora creato le materie.', 'libro');
       }
-      return h('div', { class: 'griglia' }, d.materie.map(cardMateria));
+      return h('div', {}, cardMieDate(d.mie), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
     },
   });
+}
+
+/** "Le mie date": le prossime interrogazioni di chi ha salvato il proprio nome. */
+function cardMieDate(mie) {
+  // Solo se il nome salvato corrisponde a una persona sola.
+  if (!mie || mie.risultati?.length !== 1) return null;
+  const r = mie.risultati[0];
+  const prossime = r.date.filter((x) => giorniDa(x.data) >= 0 && x.stato !== 'interrogato');
+  return h('section', { class: 'card mie-date', 'data-key': 'mie-date', 'data-firma': firma(prossime) },
+    h('h2', {}, icon('utente', 20), `Le tue date, ${r.nome}`),
+    prossime.length
+      ? h('ul', { class: 'persone' }, prossime.map((x) =>
+          h('li', { class: 'persona' },
+            h('a', { class: 'nome', href: `#/materia/${encodeURIComponent(x.slug)}` }, x.materia),
+            h('span', {}, dataTitolo(x.data)),
+            quandoRelativo(x.data) ? h('span', { class: 'tag accent' }, quandoRelativo(x.data)) : null,
+            badge(x.stato),
+            x.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null)))
+      : h('p', { class: 'muted', style: 'margin:0' }, 'Nessuna interrogazione in programma per te.'),
+    h('p', { class: 'piccolo', style: 'margin:.75rem 0 0' }, h('a', { href: '#/cerca' }, 'Cambia nome o vedi lo storico')));
 }
 
 function cardMateria(m) {
@@ -309,7 +336,7 @@ export function cerca(_params, query) {
     h('div', { class: 'titolo-pagina' },
       h('div', {}, h('h1', {}, 'Le mie interrogazioni'), h('p', { class: 'sotto' }, 'Trova subito le tue date in tutte le materie.'))),
     h('div', { class: 'cerca-box', style: 'margin-bottom:.6rem' }, icon('cerca', 18), input),
-    h('label', { class: 'check piccolo' }, ricorda, 'Ricorda il mio nome su questo dispositivo'),
+    h('label', { class: 'check piccolo' }, ricorda, 'Ricorda il mio nome su questo dispositivo (le tue date compaiono in home)'),
     risultati);
 
   const vista = creaVista(risultati, {
