@@ -6,7 +6,7 @@
 // =====================================================================
 
 export const CONFIG = {
-  SUPABASE_URL: 'https://INSERISCI-IL-TUO-PROGETTO.supabase.co',
+  SUPABASE_URL: 'https://urtdlosuxwydhnkmzczk.supabase.co',
   SUPABASE_ANON_KEY: 'INSERISCI-LA-TUA-ANON-KEY',
 
   // Nome del canale Realtime: deve coincidere con quello usato nel
