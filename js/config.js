@@ -7,7 +7,7 @@
 
 export const CONFIG = {
   SUPABASE_URL: 'https://urtdlosuxwydhnkmzczk.supabase.co',
-  SUPABASE_ANON_KEY: 'INSERISCI-LA-TUA-ANON-KEY',
+  SUPABASE_ANON_KEY: 'sb_publishable_6_JXb0aZy5u0m1VABDOvBQ_PN_TnrKi',
 
   // Nome del canale Realtime: deve coincidere con quello usato nel
   // trigger SQL private.ping_realtime().
