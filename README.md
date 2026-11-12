@@ -169,8 +169,9 @@ Per attivarla: GitHub → **Settings → Secrets and variables → Actions** →
 
 1. **Admin**: *Staff → Elenco studenti → Carica JSON*. Formato `[{"nome":"Mario","cognome":"Rossi"}, …]`; per provare c'è `dati-esempio.json`. Prima di applicare vedi l'anteprima (aggiunti, modificati o riattivati, disattivati).
 2. **Admin**: *Nuova materia* → *Sessioni ed estrazioni* → *Nuove sessioni*: più date insieme, ognuna con argomento e numero di interrogati.
-3. Facoltativo: *Volontario / aggiungi* per inserire volontari prima dell'estrazione.
-4. In classe, sul proiettore o sul telefono: **Estrai N**. Il server sceglie e salva; l'animazione mostra una persona alla volta (≈3 s), con *Salta animazione* e *Salta tutto*.
+3. Facoltativo: *Volontari / aggiungi* per inserire **più persone insieme**, come volontari o messe a mano per quel giorno. Se i posti non bastano, l'app propone di aumentarli.
+4. In classe, sul proiettore o sul telefono: **Estrai N**. Il server sceglie e salva; la **roulette** gira tra i nomi del sorteggio (in ordine alfabetico, si vedono i nomi prima e dopo) e si ferma sull'estratto, una persona alla volta (≈3 s), con *Salta animazione* e *Salta tutto*.
+   *Copia in altra materia*: copia gli interrogati di una sessione (es. Italiano del 16/11) in una sessione di un'altra materia, esistente o nuova con la stessa data (la nuova la può creare solo l'admin). Chi è già in elenco in quella materia viene saltato.
 5. Imprevisti: **Gestisci** su una persona → *Interrogato*, *Assente*, *Rimandato* (con motivo), *Sposta ad altra data* o *Rimuovi*. Assenti e rimandati finiscono in **Da riassegnare**, dove si sceglie la nuova data.
 6. *Annulla ultima estrazione* (motivo obbligatorio) riporta nel sorteggio le persone di quell'estrazione.
 7. I compagni vedono tutto subito, con i badge di stato (icona + testo) e il **registro modifiche** (chi, cosa, quando, perché).

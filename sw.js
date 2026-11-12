@@ -8,7 +8,7 @@
 //   realtime si vedrebbero per un attimo i dati vecchi.
 // - Scritture, login e chiamate dello staff: mai in cache.
 
-const VERSIONE = 'v1.0.0';
+const VERSIONE = 'v1.1.0';
 const CACHE_SHELL = `shell-${VERSIONE}`;
 const CACHE_CDN = 'cdn-v1';
 const CACHE_DATI = 'dati-v1';

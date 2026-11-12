@@ -7,7 +7,7 @@ import { sb, api, sessione, caricaProfilo } from '../api.js';
 import { vai } from '../router.js';
 import {
   h, icon, mount, badge, toast, vuoto, conferma, dialogo, dataLunga, dataTitolo, dataCompleta,
-  meseBreve, giornoNumero, nomeCompleto, norm, slugify, STATI, oggiRoma,
+  meseBreve, giornoNumero, testoConLink, testoBreve, nomeCompleto, norm, slugify, STATI, oggiRoma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { mostraEstrazione } from '../draw.js';
@@ -305,7 +305,7 @@ function cardGestione(s, d, aggiorna, prossima, passata = false) {
         h('span', { class: 'giorno' }, giornoNumero(s.data)), h('span', { class: 'mese' }, meseBreve(s.data))),
       h('div', { style: 'flex:1;min-width:0' },
         h('h3', {}, dataTitolo(s.data)),
-        s.argomento ? h('p', { class: 'meta' }, s.argomento) : null,
+        s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
         h('p', { class: 'posti' }, `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati`)),
       h('button', { class: 'btn-icon sm', 'aria-label': `Modifica sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await dialogoSessione(s)) aggiorna(); } }, icon('matita', 18)),
       sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Elimina sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await eliminaSessione(s)) aggiorna(); } }, icon('cestino', 18)) : null),
@@ -331,7 +331,10 @@ function cardGestione(s, d, aggiorna, prossima, passata = false) {
             onclick: () => avviaEstrazione(s, d, estraibili, aggiorna),
           }, icon('dado', 16), `Estrai ${estraibili || ''}`.trim())
         : h('span', { class: 'tag' }, icon('check', 14), 'Sessione al completo'),
-      liberi > 0 ? h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoAggiungi(s, d)) aggiorna(); } }, icon('mano', 16), 'Volontario / aggiungi') : null,
+      h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoAggiungi(s, d)) aggiorna(); } }, icon('mano', 16), 'Volontari / aggiungi'),
+      s.assegnazioni.some((a) => a.stato === 'assegnato' || a.stato === 'interrogato')
+        ? h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoCopia(s, d)) aggiorna(); } }, icon('sposta', 16), 'Copia in altra materia')
+        : null,
       s.ultima_estrazione ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await annullaEstrazione(s)) aggiorna(); } }, icon('annulla', 16), 'Annulla ultima estrazione') : null));
 }
 
@@ -409,7 +412,7 @@ async function dialogoSposta(a, d, riassegna, motivoIniziale = '', idCorrente = 
     const sel = h('select', { required: true },
       h('option', { value: '' }, 'Scegli una sessione…'),
       opzioni.map(({ s, liberi }) => h('option', { value: String(s.id), disabled: liberi <= 0 },
-        `${dataCompleta(s.data)}${s.data < oggi ? ' (passata)' : ''} · ${liberi > 0 ? `${liberi} ${liberi === 1 ? 'posto libero' : 'posti liberi'}` : 'al completo'}${s.argomento ? ' · ' + s.argomento : ''}`)));
+        `${dataCompleta(s.data)}${s.data < oggi ? ' (passata)' : ''} · ${liberi > 0 ? `${liberi} ${liberi === 1 ? 'posto libero' : 'posti liberi'}` : 'al completo'}${s.argomento ? ' · ' + testoBreve(s.argomento) : ''}`)));
     const motivo = h('textarea', { rows: 2, maxlength: 200, value: motivoIniziale, placeholder: 'Facoltativo' });
     return h('form', {
       onsubmit: async (e) => {
@@ -431,27 +434,127 @@ async function dialogoSposta(a, d, riassegna, motivoIniziale = '', idCorrente = 
 
 async function dialogoAggiungi(s, d) {
   const disponibili = d.studenti.filter((x) => !x.assegnato);
+  const liberi = s.max_interrogati - s.assegnazioni.length;
   return dialogo(`Aggiungi al ${dataCompleta(s.data)}`, (chiudi) => {
-    const sel = h('select', { required: true },
-      h('option', { value: '' }, 'Scegli uno studente…'),
-      disponibili.map((x) => h('option', { value: String(x.id) }, `${x.cognome} ${x.nome}`)));
-    const vol = h('input', { type: 'checkbox', checked: true });
+    const scelti = new Set();
+    const filtro = h('input', { type: 'search', placeholder: 'Filtra…', 'aria-label': 'Filtra studenti', autocomplete: 'off' });
+    const contatore = h('p', { class: 'piccolo', role: 'status' });
+    const aumenta = h('input', { type: 'checkbox' });
+    const rigaAumenta = h('label', { class: 'check', hidden: true }, aumenta, '');
+    const tipoVol = h('input', { type: 'radio', name: 'tipo', value: 'vol', checked: true });
+    const tipoMano = h('input', { type: 'radio', name: 'tipo', value: 'mano' });
     const motivo = h('textarea', { rows: 2, maxlength: 200, placeholder: 'Facoltativo' });
+    const errore = h('p', { class: 'campo-errore', role: 'alert' });
+
+    const aggiornaContatore = () => {
+      const n = scelti.size;
+      contatore.textContent = `${n} ${n === 1 ? 'selezionato' : 'selezionati'} · posti liberi: ${Math.max(0, liberi)}`;
+      const oltre = n > liberi;
+      rigaAumenta.hidden = !oltre;
+      rigaAumenta.lastChild.textContent = `Aumenta i posti della sessione a ${s.assegnazioni.length + n}`;
+      if (oltre && !aumenta.dataset.toccato) aumenta.checked = true;
+    };
+    aumenta.addEventListener('change', () => { aumenta.dataset.toccato = '1'; });
+
+    const lista = h('ul', { class: 'lista-scelta' }, disponibili.map((x) => {
+      const cb = h('input', { type: 'checkbox', value: String(x.id) });
+      cb.addEventListener('change', () => { if (cb.checked) scelti.add(x.id); else scelti.delete(x.id); aggiornaContatore(); });
+      return h('li', { dataset: { nome: norm(`${x.cognome} ${x.nome} ${x.nome} ${x.cognome}`) } },
+        h('label', { class: 'check' }, cb, `${x.cognome} ${x.nome}`));
+    }));
+    filtro.addEventListener('input', () => {
+      const q = norm(filtro.value);
+      for (const li of lista.children) li.hidden = !!q && !li.dataset.nome.includes(q);
+    });
+    aggiornaContatore();
+
     return h('form', {
       onsubmit: async (e) => {
         e.preventDefault();
-        if (!sel.value) return;
-        const r = await esegui(() => api.aggiungi(s.id, Number(sel.value), vol.checked, motivo.value.trim()), 'Aggiunto');
+        errore.textContent = '';
+        if (!scelti.size) { errore.textContent = 'Seleziona almeno uno studente.'; return; }
+        if (scelti.size > liberi && !aumenta.checked) { errore.textContent = 'I posti non bastano: attiva "Aumenta i posti" o seleziona meno persone.'; return; }
+        const r = await esegui(() => api.aggiungiMolti(s.id, [...scelti], tipoVol.checked, motivo.value.trim(), aumenta.checked),
+          scelti.size === 1 ? 'Aggiunto' : `${scelti.size} persone aggiunte`);
         if (r) chiudi(true);
       },
     },
-      disponibili.length ? null : h('p', { class: 'muted' }, 'Tutti gli studenti attivi sono già in elenco per questa materia.'),
-      campo('Studente', sel, 'Sono elencati solo gli studenti non ancora assegnati in questa materia.'),
-      h('label', { class: 'check' }, vol, 'Volontario'),
+      disponibili.length
+        ? [
+            h('fieldset', { class: 'scelta-tipo' },
+              h('legend', {}, 'Come vengono aggiunti'),
+              h('label', { class: 'check' }, tipoVol, 'Volontari'),
+              h('label', { class: 'check' }, tipoMano, 'Messi a mano per questo giorno')),
+            filtro, lista, contatore, rigaAumenta,
+          ]
+        : h('p', { class: 'muted' }, 'Tutti gli studenti attivi sono già in elenco per questa materia.'),
+      campo('Motivo', motivo, 'Visibile nel registro modifiche.'),
+      errore,
+      h('div', { class: 'azioni' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
+        h('button', { class: 'btn btn-primary', type: 'submit', disabled: !disponibili.length }, 'Aggiungi')));
+  });
+}
+
+/** Copia gli interrogati di questa sessione in una sessione di un'altra materia. */
+async function dialogoCopia(s, d) {
+  let materie;
+  try { materie = (await api.tabella('subjects', 'id,nome,slug,ordine', 'ordine')).filter((m) => m.id !== d.materia.id); }
+  catch (e) { toast(e.message, 'errore'); return null; }
+  if (!materie.length) { toast('Non ci sono altre materie in cui copiare.', 'info'); return null; }
+  const copiabili = s.assegnazioni.filter((a) => a.stato === 'assegnato' || a.stato === 'interrogato');
+
+  return dialogo(`Copia in un'altra materia`, (chiudi) => {
+    const selMateria = h('select', { required: true }, materie.map((m) => h('option', { value: String(m.id) }, m.nome)));
+    const selSessione = h('select', { required: true });
+    const motivo = h('textarea', { rows: 2, maxlength: 200, placeholder: 'Facoltativo' });
+    const invia = h('button', { class: 'btn btn-primary', type: 'submit' }, 'Copia');
+
+    const caricaSessioni = async () => {
+      selSessione.replaceChildren(h('option', { value: '' }, 'Caricamento…'));
+      invia.disabled = true;
+      try {
+        const sessioni = await api.sessioniMateria(Number(selMateria.value));
+        const opzioni = [];
+        if (sessione.isAdmin) opzioni.push(h('option', { value: 'nuova' }, `Nuova sessione il ${dataCompleta(s.data)}`));
+        for (const x of sessioni) opzioni.push(h('option', { value: String(x.id) },
+          `${dataCompleta(x.data)}${x.argomento ? ' · ' + testoBreve(x.argomento) : ''} (${x.max_interrogati} posti)`));
+        if (!opzioni.length) opzioni.push(h('option', { value: '' }, 'Nessuna sessione: chiedi all\'admin di crearne una'));
+        selSessione.replaceChildren(...opzioni);
+        // Preferisci una sessione esistente con la stessa data.
+        const stessa = sessioni.find((x) => x.data === s.data);
+        if (stessa) selSessione.value = String(stessa.id);
+        invia.disabled = !selSessione.value;
+      } catch (e) {
+        selSessione.replaceChildren(h('option', { value: '' }, 'Errore nel caricamento'));
+        toast(e.message, 'errore');
+      }
+    };
+    selMateria.addEventListener('change', caricaSessioni);
+    selSessione.addEventListener('change', () => { invia.disabled = !selSessione.value; });
+    caricaSessioni();
+
+    return h('form', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        if (!selSessione.value) return;
+        const r = await esegui(() => api.copiaSessione(s.id, Number(selMateria.value),
+          selSessione.value === 'nuova' ? null : Number(selSessione.value), motivo.value.trim()));
+        if (r) {
+          const nomeMat = selMateria.selectedOptions[0].textContent;
+          toast(`${r.copiati} ${r.copiati === 1 ? 'persona copiata' : 'persone copiate'} in ${nomeMat}` +
+            (r.saltati.length ? ` · già presenti e saltati: ${r.saltati.join(', ')}` : ''), r.copiati ? 'ok' : 'info', 7000);
+          chiudi(true);
+        }
+      },
+    },
+      h('p', {}, `Da ${d.materia.nome}, ${dataTitolo(s.data)}: `, h('strong', {}, copiabili.map(nomeCompleto).join(', ') || 'nessuno')),
+      campo('Materia di destinazione', selMateria),
+      campo('Sessione', selSessione, 'Chi è già in elenco in quella materia viene saltato. Se servono più posti vengono aggiunti.'),
       campo('Motivo', motivo),
       h('div', { class: 'azioni' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aggiungi')));
+        invia));
   });
 }
 

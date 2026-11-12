@@ -121,6 +121,15 @@ export const api = {
   annullaEstrazione: (sessionId, motivo) => rpc('staff_undo_last_draw', { p_session_id: sessionId, p_motivo: motivo }),
   aggiungi: (sessionId, studentId, volontario, motivo) =>
     rpc('staff_add_to_session', { p_session_id: sessionId, p_student_id: studentId, p_volontario: volontario, p_motivo: motivo || null }),
+  aggiungiMolti: (sessionId, studentIds, volontario, motivo, aumentaMax) =>
+    rpc('staff_add_many', { p_session_id: sessionId, p_student_ids: studentIds, p_volontario: volontario, p_motivo: motivo || null, p_aumenta_max: !!aumentaMax }),
+  copiaSessione: (fromId, toSubject, toSession, motivo) =>
+    rpc('staff_copy_session', { p_from_session: fromId, p_to_subject: toSubject, p_to_session: toSession, p_motivo: motivo || null }),
+  async sessioniMateria(subjectId) {
+    const { data, error } = await sb.from('sessions').select('id,data,argomento,max_interrogati').eq('subject_id', subjectId).order('data');
+    if (error) throw new Error(messaggioErrore(error));
+    return data;
+  },
   stato: (assignmentId, stato, motivo) => rpc('staff_set_state', { p_assignment_id: assignmentId, p_stato: stato, p_motivo: motivo || null }),
   rimuovi: (assignmentId, motivo) => rpc('staff_remove_assignment', { p_assignment_id: assignmentId, p_motivo: motivo || null }),
   sposta: (assignmentId, target, motivo) =>

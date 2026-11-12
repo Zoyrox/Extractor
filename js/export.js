@@ -3,7 +3,7 @@
 // pulito, nitido e senza dipendenze). Il PDF usa jsPDF con testo vettoriale,
 // caricato da CDN solo quando serve.
 
-import { h, icon, dialogo, toast, dataLunga, dataOra, oggiRoma, STATI } from './ui.js';
+import { h, icon, dialogo, toast, testoBreve, dataLunga, dataOra, oggiRoma, STATI } from './ui.js';
 import { CONFIG } from './config.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js';
@@ -15,7 +15,7 @@ function preparaDati(d, includiPassate) {
     .map((s) => ({
       data: s.data,
       titolo: capitalizza(dataLunga(s.data)),
-      argomento: s.argomento,
+      argomento: testoBreve(s.argomento),
       max: s.max_interrogati,
       passata: s.data < d.oggi,
       persone: [...s.interrogati, ...s.non_presenti].map((p) => ({
@@ -50,7 +50,15 @@ function aCapo(ctx, testo, larghezza) {
   const parole = String(testo).split(/\s+/);
   const righe = [];
   let riga = '';
-  for (const p of parole) {
+  for (let p of parole) {
+    // Parola più lunga della riga (es. un URL): spezzala a caratteri.
+    while (ctx.measureText(p).width > larghezza && p.length > 1) {
+      let i = p.length - 1;
+      while (i > 1 && ctx.measureText(p.slice(0, i)).width > larghezza) i--;
+      if (riga) { righe.push(riga); riga = ''; }
+      righe.push(p.slice(0, i));
+      p = p.slice(i);
+    }
     const prova = riga ? `${riga} ${p}` : p;
     if (ctx.measureText(prova).width > larghezza && riga) { righe.push(riga); riga = p; } else riga = prova;
   }

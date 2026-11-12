@@ -311,3 +311,36 @@ export function meseBreve(iso) {
 export function giornoNumero(iso) {
   return String(Number(iso.split('-')[2]));
 }
+
+/**
+ * Trasforma un testo in nodi, rendendo i link http(s) cliccabili e
+ * abbreviati (es. "classroom.google.com/…"). Mai innerHTML: solo nodi.
+ * Con cliccabile = false (es. dentro un'altra <a>) mostra solo il testo breve.
+ */
+export function testoConLink(testo, cliccabile = true) {
+  const out = [];
+  const re = /https?:\/\/[^\s<>"']+/g;
+  let ultimo = 0;
+  for (const m of String(testo || '').matchAll(re)) {
+    if (m.index > ultimo) out.push(testo.slice(ultimo, m.index));
+    let url = null;
+    try { url = new URL(m[0]); } catch { /* non è un URL valido */ }
+    if (url && (url.protocol === 'https:' || url.protocol === 'http:')) {
+      const breve = url.hostname.replace(/^www\./, '') + (url.pathname.length > 1 ? '/…' : '');
+      out.push(cliccabile
+        ? h('a', { class: 'link-esterno', href: url.href, target: '_blank', rel: 'noopener noreferrer', title: url.href },
+            icon('link', 14), h('span', {}, breve))
+        : breve);
+    } else {
+      out.push(m[0]);
+    }
+    ultimo = m.index + m[0].length;
+  }
+  if (ultimo < String(testo || '').length) out.push(String(testo).slice(ultimo));
+  return out;
+}
+
+/** Versione solo testo (per export e messaggi): URL abbreviati. */
+export function testoBreve(testo) {
+  return testoConLink(testo, false).join('');
+}

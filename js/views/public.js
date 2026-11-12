@@ -6,7 +6,7 @@ import { prefs } from '../prefs.js';
 import { vai, sostituisciQuery } from '../router.js';
 import {
   h, icon, mount, badge, toast, vuoto, dataLunga, dataTitolo, dataOra, quandoRelativo, giorniDa,
-  meseBreve, giornoNumero, nomeCompleto, conferma,
+  meseBreve, giornoNumero, testoConLink, nomeCompleto, conferma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { apriEsportazione } from '../export.js';
@@ -119,7 +119,7 @@ function cardMateria(m) {
     p
       ? [
           h('p', { class: 'prossima-data' }, 'Prossima: ', dataLunga(p.data), rel ? h('span', { class: 'tag accent', style: 'margin-left:.4rem' }, rel) : null),
-          p.argomento ? h('p', { class: 'meta' }, p.argomento) : null,
+          p.argomento ? h('p', { class: 'meta' }, testoConLink(p.argomento, false)) : null,
           h('p', { class: 'meta' }, p.n_assegnati ? `${p.n_assegnati} di ${p.max_interrogati} già estratti` : `${p.max_interrogati} da interrogare · estrazione da fare`),
         ]
       : h('p', { class: 'meta' }, m.n_sessioni ? 'Nessuna interrogazione in programma' : 'Nessuna sessione creata'));
@@ -199,7 +199,7 @@ export function cardSessione(s, { prossima = false, passata = false } = {}) {
           prossima ? h('span', { class: 'tag accent' }, 'Prossima') : null,
           rel && rel !== 'passata' ? h('span', { class: 'tag' }, rel) : null,
           passata ? h('span', { class: 'tag' }, 'Passata') : null),
-        s.argomento ? h('p', { class: 'meta' }, s.argomento) : null,
+        s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
         h('p', { class: 'posti' }, `${presenti.length} di ${s.max_interrogati} interrogati`))),
     presenti.length || s.non_presenti.length
       ? h('ul', { class: 'persone' },
@@ -347,7 +347,7 @@ function disegnaRicerca(risultati, q) {
               h('span', {}, dataTitolo(x.data)),
               badge(x.stato),
               x.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
-              x.argomento ? h('span', { class: 'nota' }, x.argomento) : null)))
+              x.argomento ? h('span', { class: 'nota' }, testoConLink(x.argomento)) : null)))
         : h('p', { class: 'muted', style: 'margin:0' }, 'Nessuna interrogazione assegnata per ora.'))));
 }
 
