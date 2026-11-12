@@ -31,8 +31,8 @@ js/views/staff.js          area staff (estrazioni, imprevisti, elenco, utenti, c
 sw.js                      service worker (cache shell + dati offline)
 manifest.json, icons/      PWA (icone 192/512, maskable, Apple)
 robots.txt, .nojekyll      non indicizzabile; Pages senza Jekyll
-supabase/migrations/…sql   schema (applicato dall'integrazione GitHub di Supabase)
-supabase/schema.sql        stesso schema, da incollare a mano nello SQL Editor
+supabase/migrations/*.sql  schema (applicato dall'integrazione GitHub di Supabase)
+supabase/schema.sql        tutte le migrazioni in un unico file, da incollare a mano nello SQL Editor
 dati-esempio.json          25 nomi FITTIZI per provare l'app
 scripts/genera-icone.py    rigenera le icone (solo libreria standard Python)
 .github/workflows/keepalive.yml   ping settimanale (facoltativo)
@@ -92,11 +92,15 @@ L'app usa il pattern **"ping senza dati"**. Un trigger a livello di istruzione i
 3. Il server email incluso nel piano gratuito invia **pochissime email all'ora**: per admin e 2–3 rappresentanti basta. Se servisse di più, configura un SMTP tuo in **Authentication → Emails → SMTP Settings**.
 4. Chiunque abbia il link può registrarsi, ma **un nuovo account non ha alcun permesso** finché l'admin non lo approva in *Staff → Staff e rappresentanti*. Se a un certo punto non vuoi più registrazioni, puoi disattivare **Allow new users to sign up** nelle impostazioni di Auth.
 
-## 5. Impostare il primo admin (una volta sola)
+## 5. Il primo admin (automatico)
+
+**Il primo account che si registra diventa automaticamente admin approvato.** Tutti i successivi entrano come rappresentanti in attesa di approvazione. Quindi, appena il sito è online e **prima di condividere il link**:
 
 1. Apri l'app → **Staff → Registrati** con la tua email e una password (almeno 8 caratteri).
-2. Conferma l'email dal link ricevuto.
-3. Supabase → **SQL Editor**, esegui (con la tua email):
+2. Conferma l'email dal link ricevuto. Se il link ti porta su una pagina d'errore (Site URL non ancora impostato), l'email risulta comunque confermata: torna sull'app e accedi.
+3. Fatto: vedi la sezione *Amministrazione*.
+
+Se qualcun altro si fosse registrato per primo, correggi da **SQL Editor**:
 
 ```sql
 update public.staff
@@ -104,7 +108,7 @@ update public.staff
  where email = 'la-tua-email@esempio.it';
 ```
 
-4. Torna nell'app, esci e rientra (oppure premi "Ricontrolla"): ora vedi la sezione *Amministrazione*.
+(e revoca l'altro account da *Staff e rappresentanti*).
 
 ## 6. Impostare il codice di classe
 
