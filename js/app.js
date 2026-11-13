@@ -61,6 +61,8 @@ rotta('/staff/studenti', staff.staffStudenti);
 rotta('/staff/utenti', staff.staffUtenti);
 rotta('/staff/impostazioni', staff.staffImpostazioni);
 rotta('/staff/backup', staff.staffBackup);
+rotta('/staff/orario', staff.staffOrario);
+rotta('/staff/cestino', staff.staffCestino);
 rotta('/staff/nuova-password', staff.staffNuovaPassword);
 
 let primaNavigazione = true;

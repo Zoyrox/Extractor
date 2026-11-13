@@ -6,11 +6,13 @@
 import { sb, api, sessione, caricaProfilo } from '../api.js';
 import { vai } from '../router.js';
 import {
-  h, icon, mount, badge, toast, vuoto, conferma, dialogo, dataLunga, dataTitolo, dataCompleta,
+  h, icon, mount, badge, toast, vuoto, skeleton, erroreBox, conferma, dialogo, dataLunga, dataTitolo, dataCompleta,
   meseBreve, giornoNumero, testoConLink, testoBreve, nomeCompleto, norm, slugify, STATI, oggiRoma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
+import { avatarMateria } from './public.js';
 import { mostraEstrazione } from '../draw.js';
+import { giorniSuggeriti, profPerMateria, descriviOraProf, coloreMateria, PALETTE, GIORNI, GIORNI_BREVI } from '../orario.js';
 
 // ---------------------------------------------------------------------
 //  Utilità
@@ -194,7 +196,7 @@ function dashboard() {
 
   return creaVista(cont, {
     carica: async () => ({
-      materie: await api.tabella('subjects', 'id,nome,slug,ordine', 'ordine'),
+      materie: await api.tabella('subjects', 'id,nome,slug,ordine,colore', 'ordine'),
       staff: sessione.isAdmin ? await api.tabella('staff', 'user_id,approvato', 'creato_il') : [],
     }),
     disegna: (d) => {
@@ -209,7 +211,8 @@ function dashboard() {
             ? h('div', { class: 'griglia' }, d.materie.map((m) =>
                 h('div', { class: 'card', 'data-key': `m-${m.id}`, 'data-firma': firma(m) },
                   h('div', { class: 'card-head' },
-                    h('h3', { style: 'flex:1' }, m.nome),
+                    avatarMateria(m),
+                    h('h3', { style: 'flex:1;align-self:center' }, m.nome),
                     sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Modifica ${m.nome}`, onclick: () => dialogoMateria(m) }, icon('matita', 18)) : null,
                     sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Elimina ${m.nome}`, onclick: () => eliminaMateria(m) }, icon('cestino', 18)) : null),
                   h('p', { class: 'meta' }, `#/materia/${m.slug}`),
@@ -224,6 +227,8 @@ function dashboard() {
                 linkCard('#/staff/studenti', 'gruppo', 'Elenco studenti', 'Carica il JSON, aggiungi, modifica o disattiva.'),
                 linkCard('#/staff/utenti', 'scudo', 'Staff e rappresentanti', inAttesa ? `${inAttesa} in attesa di approvazione` : 'Approva o revoca i rappresentanti.', inAttesa > 0),
                 linkCard('#/staff/impostazioni', 'impostazioni', 'Codice di classe', 'Imposta o cambia il codice per i compagni.'),
+                linkCard('#/staff/orario', 'calendario', 'Orario e prof', 'Ore di lezione, orario settimanale e prof di ogni materia.'),
+                linkCard('#/staff/cestino', 'cestino', 'Cestino', 'Sessioni eliminate (anche dai rappresentanti), da ripristinare.'),
                 linkCard('#/staff/backup', 'download', 'Backup', 'Copie automatiche settimanali e download dei dati.')))
           : null);
     },
@@ -241,19 +246,27 @@ async function dialogoMateria(m) {
     const nome = h('input', { required: true, maxlength: 60, value: m?.nome || '' });
     const slug = h('input', { required: true, maxlength: 60, pattern: '[a-z0-9]+(-[a-z0-9]+)*', value: m?.slug || '' });
     const ordine = h('input', { type: 'number', min: 0, max: 999, value: String(m?.ordine ?? 0) });
+    let colore = m?.colore || '';
+    const swatch = h('div', { class: 'swatch-lista', role: 'radiogroup', 'aria-label': 'Colore' },
+      PALETTE.map((c) => {
+        const b = h('button', { type: 'button', class: 'swatch', role: 'radio', style: `--colore:${c}`, 'aria-label': `Colore ${c}`, 'aria-checked': String(c === (colore || coloreMateria(m || {}))) });
+        b.addEventListener('click', () => { colore = c; for (const x of swatch.children) x.setAttribute('aria-checked', String(x === b)); });
+        return b;
+      }));
     let slugToccato = !!m;
     slug.addEventListener('input', () => { slugToccato = true; });
     nome.addEventListener('input', () => { if (!slugToccato) slug.value = slugify(nome.value); });
     return h('form', {
       onsubmit: async (e) => {
         e.preventDefault();
-        const ok = await esegui(() => api.salvaMateria(m?.id ?? null, nome.value.trim(), slug.value.trim(), Number(ordine.value) || 0), 'Materia salvata');
+        const ok = await esegui(() => api.salvaMateria(m?.id ?? null, nome.value.trim(), slug.value.trim(), Number(ordine.value) || 0, colore), 'Materia salvata');
         if (ok) chiudi(true);
       },
     },
       campo('Nome', nome),
       campo('Indirizzo (slug)', slug, 'Solo lettere minuscole, numeri e trattini. Cambiandolo, i link già condivisi smettono di funzionare.'),
       campo('Ordine', ordine, 'Le materie sono mostrate in ordine crescente.'),
+      h('div', { class: 'campo' }, h('span', {}, 'Colore'), swatch),
       h('div', { class: 'azioni' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva')));
@@ -404,8 +417,8 @@ function disegnaGestione(d, vista, stato, aggiornaBarra) {
 
   return h('div', {},
     indietro('#/staff', 'Area staff'),
-    intestazione(d.materia.nome, `Nel sorteggio: ${d.pool.length} ${d.pool.length === 1 ? 'studente' : 'studenti'}`,
-      sessione.isAdmin ? h('button', { class: 'btn btn-primary btn-sm', onclick: async () => { if (await dialogoNuoveSessioni(d)) aggiorna(); } }, icon('piu', 16), 'Nuove sessioni') : null,
+    intestazione([avatarMateria(d.materia), d.materia.nome], `Nel sorteggio: ${d.pool.length} ${d.pool.length === 1 ? 'studente' : 'studenti'}`,
+      h('button', { class: 'btn btn-primary btn-sm', onclick: async () => { if (await dialogoNuoveSessioni(d)) aggiorna(); } }, icon('piu', 16), 'Nuove sessioni'),
       h('a', { class: 'btn btn-sm', href: `#/materia/${encodeURIComponent(d.materia.slug)}` }, 'Vista pubblica')),
 
     daRiassegnare.length
@@ -421,7 +434,7 @@ function disegnaGestione(d, vista, stato, aggiornaBarra) {
       : null,
 
     d.sessioni.length === 0
-      ? vuoto('Nessuna sessione', sessione.isAdmin ? 'Crea le sessioni con data, argomento e numero di interrogati.' : 'L\'amministratore non ha ancora creato sessioni.')
+      ? vuoto('Nessuna sessione', 'Crea le sessioni con "Nuove sessioni": ti suggerisco i giorni con questa materia.')
       : h('div', { class: 'stack' },
           future.map((s, i) => cardGestione(s, d, aggiorna, i === 0, false, stato, aggiornaBarra, vista)),
           passate.length
@@ -503,10 +516,11 @@ function cardGestione(s, d, aggiorna, prossima, passata, stato, aggiornaBarra, v
         h('span', { class: 'giorno' }, giornoNumero(s.data)), h('span', { class: 'mese' }, meseBreve(s.data))),
       h('div', { style: 'flex:1;min-width:0' },
         h('h3', {}, dataTitolo(s.data)),
+        descriviOraProf(s) ? h('p', { class: 'ora-prof' }, icon('orologio', 14), descriviOraProf(s)) : null,
         s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
         h('p', { class: 'posti' }, inRiordino ? 'Trascina o usa le frecce per scegliere chi va per primo' : `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati`)),
-      h('button', { class: 'btn-icon sm', 'aria-label': `Modifica sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await dialogoSessione(s)) aggiorna(); } }, icon('matita', 18)),
-      sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Elimina sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await eliminaSessione(s)) aggiorna(); } }, icon('cestino', 18)) : null),
+      h('button', { class: 'btn-icon sm', 'aria-label': `Modifica sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await dialogoSessione(s, d)) aggiorna(); } }, icon('matita', 18)),
+      h('button', { class: 'btn-icon sm', 'aria-label': `Elimina sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await eliminaSessione(s)) aggiorna(); } }, icon('cestino', 18))),
     elenco,
     azioni);
 }
@@ -594,6 +608,8 @@ async function avviaEstrazione(s, d, quanti, aggiorna) {
   await mostraEstrazione({
     materia: d.materia.nome,
     data: s.data,
+    dettaglio: descriviOraProf(s),
+    colore: coloreMateria(d.materia),
     estratti: res.estratti,
     nomiPool: d.pool.map((p) => `${p.nome} ${p.cognome}`),
   });
@@ -802,20 +818,43 @@ async function dialogoCopia(s, d) {
   });
 }
 
-async function dialogoSessione(s) {
+/** Select dell'ora di lezione (con "—" per nessuna). */
+function selectOra(orario, valore) {
+  return h('select', { 'aria-label': 'Ora di lezione' },
+    h('option', { value: '' }, 'Ora —'),
+    orario.ore.map((o) => h('option', { value: String(o.ora), selected: Number(valore) === o.ora }, `${o.ora}ª ora · ${o.inizio}–${o.fine}`)));
+}
+
+/** Select del prof: prima chi insegna la materia. */
+function selectProf(orario, subjectId, valore) {
+  const lista = profPerMateria(orario, subjectId);
+  const insegnano = lista.filter((p) => p.materie.includes(subjectId));
+  const altri = lista.filter((p) => !p.materie.includes(subjectId));
+  const opt = (p) => h('option', { value: String(p.id), selected: Number(valore) === p.id }, p.nome);
+  return h('select', { 'aria-label': 'Prof' },
+    h('option', { value: '' }, 'Prof —'),
+    insegnano.length ? h('optgroup', { label: 'Insegnano questa materia' }, insegnano.map(opt)) : null,
+    altri.length ? h('optgroup', { label: 'Altri prof' }, altri.map(opt)) : null);
+}
+
+async function dialogoSessione(s, d) {
   return dialogo('Modifica sessione', (chiudi) => {
     const data = h('input', { type: 'date', required: true, value: s.data });
+    const ora = selectOra(d.orario, s.ora);
+    const prof = selectProf(d.orario, d.materia.id, s.teacher_id);
     const arg = h('input', { maxlength: 200, value: s.argomento });
     const max = h('input', { type: 'number', min: Math.max(1, s.assegnazioni.length), max: 40, required: true, value: String(s.max_interrogati) });
     const motivo = h('textarea', { rows: 2, maxlength: 200, placeholder: 'Facoltativo (es. "verifica spostata")' });
     return h('form', {
       onsubmit: async (e) => {
         e.preventDefault();
-        const r = await esegui(() => api.modificaSessione(s.id, data.value, arg.value.trim(), Number(max.value), motivo.value.trim()), 'Sessione aggiornata');
+        const r = await esegui(() => api.modificaSessione(s.id, data.value, arg.value.trim(), Number(max.value), motivo.value.trim(),
+          ora.value ? Number(ora.value) : null, prof.value ? Number(prof.value) : null), 'Sessione aggiornata');
         if (r) chiudi(true);
       },
     },
       campo('Data', data),
+      h('div', { class: 'due-colonne' }, campo('Ora', ora), campo('Prof', prof)),
       campo('Argomento', arg),
       campo('Numero di interrogati', max, s.assegnazioni.length ? `Minimo ${s.assegnazioni.length} (già assegnati).` : null),
       campo('Motivo', motivo, 'Le modifiche finiscono nel registro, visibile a tutti.'),
@@ -828,9 +867,9 @@ async function dialogoSessione(s) {
 async function eliminaSessione(s) {
   const r = await conferma({
     titolo: `Eliminare la sessione del ${dataCompleta(s.data)}?`,
-    messaggio: s.assegnazioni.length
-      ? `Le ${s.assegnazioni.length} persone assegnate torneranno nel sorteggio. L'operazione non si può annullare.`
-      : 'L\'operazione non si può annullare.',
+    messaggio: (s.assegnazioni.length
+      ? `Le ${s.assegnazioni.length} persone assegnate torneranno nel sorteggio. `
+      : '') + 'L\'admin può recuperarla dal cestino.',
     ok: 'Elimina', pericolo: true, chiediMotivo: true,
   });
   if (!r) return false;
@@ -838,45 +877,85 @@ async function eliminaSessione(s) {
 }
 
 async function dialogoNuoveSessioni(d) {
+  const orario = d.orario;
+  const occupate = new Set(d.sessioni.map((s) => `${s.data}|${s.ora ?? ''}`));
+  const suggeriti = giorniSuggeriti(orario, d.materia.id, { occupate });
   return dialogo(`Nuove sessioni · ${d.materia.nome}`, (chiudi) => {
     const righe = h('div', { class: 'stack' });
+    const vuote = h('p', { class: 'muted piccolo' }, suggeriti.length
+      ? 'Spunta uno o più giorni qui sopra, oppure inserisci una data manualmente.'
+      : 'Nessuna sessione ancora: inserisci una data con il pulsante qui sotto.');
+    const aggiornaVuote = () => { vuote.hidden = righe.children.length > 0; };
+
     const aggiungiRiga = (valori = {}) => {
       const data = h('input', { type: 'date', required: true, value: valori.data || '', 'aria-label': 'Data' });
+      const ora = selectOra(orario, valori.ora);
+      const prof = selectProf(orario, d.materia.id, valori.teacher_id);
       const arg = h('input', { maxlength: 200, placeholder: 'Argomento (facoltativo)', 'aria-label': 'Argomento' });
-      const max = h('input', { type: 'number', min: 1, max: 40, required: true, value: String(valori.max || 3), 'aria-label': 'Numero di interrogati', style: 'max-width:90px' });
-      const riga = h('div', { class: 'card', style: 'padding:.75rem' },
-        h('div', { class: 'riga' }, h('div', { style: 'flex:1;min-width:140px' }, data), max,
-          h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': 'Rimuovi riga', onclick: () => { if (righe.children.length > 1) riga.remove(); } }, icon('x', 18))),
-        h('div', { style: 'margin-top:.5rem' }, arg));
-      riga._valori = () => ({ data: data.value, argomento: arg.value.trim(), max_interrogati: Number(max.value) });
+      const max = h('input', { type: 'number', min: 1, max: 40, required: true, value: String(valori.max || 3), 'aria-label': 'Numero di interrogati' });
+      const riga = h('div', { class: 'riga-sessione' },
+        h('div', { class: 'riga' },
+          h('div', { style: 'flex:1;min-width:150px' }, data),
+          h('label', { class: 'campo-mini' }, h('span', {}, 'Interrogati'), max),
+          h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': 'Rimuovi riga', onclick: () => { riga.remove(); valori.onRimuovi?.(); aggiornaVuote(); } }, icon('x', 18))),
+        h('div', { class: 'due-colonne' }, ora, prof),
+        arg);
+      riga._valori = () => ({
+        data: data.value, argomento: arg.value.trim(), max_interrogati: Number(max.value),
+        ora: ora.value ? Number(ora.value) : null, teacher_id: prof.value ? Number(prof.value) : null,
+      });
       righe.append(riga);
-      data.focus();
+      aggiornaVuote();
+      if (!valori.data) data.focus();
+      return riga;
     };
-    // Proposta: una settimana dopo l'ultima sessione esistente.
-    const ultima = d.sessioni.at(-1)?.data;
-    const base = ultima && ultima >= oggiRoma() ? new Date(ultima + 'T12:00:00Z') : null;
-    if (base) base.setUTCDate(base.getUTCDate() + 7);
-    aggiungiRiga({ data: base ? base.toISOString().slice(0, 10) : '' });
+
+    // Giorni suggeriti dall'orario.
+    let blocco;
+    if (!orario.slot.length) {
+      blocco = h('div', { class: 'avviso-orario' }, icon('info', 18),
+        h('span', {}, sessione.isAdmin
+          ? h('span', {}, 'Imposta l\'orario della classe per vedere qui i giorni con questa materia. ', h('a', { href: '#/staff/orario' }, 'Vai all\'orario'))
+          : 'Quando l\'admin imposterà l\'orario, qui vedrai i giorni con questa materia.'));
+    } else if (!suggeriti.length) {
+      blocco = h('div', { class: 'avviso-orario' }, icon('info', 18),
+        h('span', {}, `Nell'orario non ci sono ore di ${d.materia.nome} né prof che la insegnano. Aggiungi una data a mano.`));
+    } else {
+      blocco = h('div', {},
+        h('h3', { class: 'sottotitolo-sezione' }, `Giorni con ${d.materia.nome}`),
+        h('ul', { class: 'lista-giorni' }, suggeriti.map((x) => {
+          const cb = h('input', { type: 'checkbox', disabled: x.occupata });
+          let riga = null;
+          cb.addEventListener('change', () => {
+            if (cb.checked) {
+              const tProf = orario.prof.find((p) => p.id === x.teacher_id);
+              riga = aggiungiRiga({ data: x.data, ora: x.ora, teacher_id: tProf?.materie.includes(d.materia.id) ? x.teacher_id : '', onRimuovi: () => { cb.checked = false; riga = null; } });
+            } else { riga?.remove(); riga = null; aggiornaVuote(); }
+          });
+          return h('li', {},
+            h('label', { class: `giorno-suggerito ${x.occupata ? 'occupato' : ''}` },
+              cb,
+              h('span', { class: 'gs-data' }, h('strong', {}, `${GIORNI_BREVI[x.giorno]} ${dataCompleta(x.data).slice(0, 5)}`), h('small', {}, `${x.ora}ª ora`)),
+              h('span', { class: 'gs-info' },
+                h('span', {}, x.tramiteProf ? `Ora di ${x.materiaOra}` : x.materiaOra, x.prof ? ` · ${x.prof}` : ''),
+                h('small', {}, x.occupata ? 'Già fissata' : x.tramiteProf ? `${x.prof} insegna anche ${d.materia.nome}` : `${x.inizio}–${x.fine}`))));
+        })));
+          }
 
     return h('form', {
       onsubmit: async (e) => {
         e.preventDefault();
         const sessioni = [...righe.children].map((r) => r._valori());
+        if (!sessioni.length) { toast('Scegli almeno un giorno', 'errore'); return; }
         const r = await esegui(() => api.nuoveSessioni(d.materia.id, sessioni), sessioni.length === 1 ? 'Sessione creata' : `${sessioni.length} sessioni create`);
         if (r) chiudi(true);
       },
     },
-      h('p', { class: 'muted piccolo' }, 'Ogni riga è una data con il suo numero di interrogati.'),
+      blocco,
+      h('h3', { class: 'sottotitolo-sezione' }, 'Sessioni da creare'),
+      vuote,
       righe,
-      h('button', {
-        class: 'btn btn-sm', type: 'button', style: 'margin-top:.75rem',
-        onclick: () => {
-          const ultimaRiga = righe.lastElementChild?._valori();
-          let prossima = '';
-          if (ultimaRiga?.data) { const x = new Date(ultimaRiga.data + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + 7); prossima = x.toISOString().slice(0, 10); }
-          aggiungiRiga({ data: prossima, max: ultimaRiga?.max_interrogati });
-        },
-      }, icon('piu', 16), 'Aggiungi un\'altra data'),
+      h('button', { class: 'btn btn-tinted btn-sm', type: 'button', style: 'margin-top:.75rem', onclick: () => aggiungiRiga({}) }, icon('piu', 16), 'Aggiungi una data a mano'),
       h('div', { class: 'azioni' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea sessioni')));
@@ -1258,4 +1337,238 @@ export function staffBackup() {
 
 function dataOraBreve(ts) {
   return new Intl.DateTimeFormat('it-IT', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Rome' }).format(new Date(ts));
+}
+
+// ---------------------------------------------------------------------
+//  Orario e prof (solo admin)
+// ---------------------------------------------------------------------
+
+function aggiungiMinuti(hhmm, min) {
+  const [hh, mm] = hhmm.split(':').map(Number);
+  const t = Math.min(23 * 60 + 59, hh * 60 + mm + min);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
+export function staffOrario(_params, query) {
+  if (!guardia({ admin: true })) return;
+  const cont = h('div');
+  mount(vistaEl(), indietro('#/staff', 'Area staff'),
+    intestazione('Orario e prof', 'Servono a suggerire i giorni quando si crea una sessione.'), cont);
+
+  let orario = null;          // dati dal server
+  let bozza = null;           // modifiche non salvate (ore + slot)
+  let modificato = false;
+  let scheda = query.get('scheda') || 'orario';
+  let giorno = 1;
+
+  const segnaModificato = () => { modificato = true; barraSalva.hidden = false; };
+  const barraSalva = h('div', { class: 'barra-salva', hidden: true },
+    h('span', {}, 'Modifiche non salvate'),
+    h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => carica(true) }, 'Annulla'),
+    h('button', {
+      class: 'btn btn-primary btn-sm', type: 'button',
+      onclick: async () => {
+        const ore = bozza.ore.filter((o) => o.inizio && o.fine);
+        const slot = [...bozza.slot.values()].filter((x) => x.subject_id || x.teacher_id);
+        if (await esegui(() => api.salvaOrario(ore, slot), 'Orario salvato')) { modificato = false; carica(true); }
+      },
+    }, icon('check', 16), 'Salva'));
+  vistaEl().append(barraSalva);
+
+  async function carica(forza = false) {
+    if (modificato && !forza) return; // non perdere le modifiche in corso
+    try {
+      orario = await api.orario();
+      bozza = {
+        ore: orario.ore.map((o) => ({ ...o })),
+        slot: new Map(orario.slot.map((x) => [`${x.giorno}|${x.ora}`, { ...x }])),
+      };
+      modificato = false;
+      barraSalva.hidden = true;
+      disegna();
+    } catch (e) { mount(cont, erroreBox(e.message, () => carica(true))); }
+  }
+
+  function disegna() {
+    const tab = (id, testo) => h('button', {
+      type: 'button', role: 'tab', 'aria-selected': String(scheda === id),
+      onclick: () => { scheda = id; disegna(); },
+    }, testo);
+    mount(cont,
+      h('div', { class: 'tabs tabs-piene', role: 'tablist' }, tab('orario', 'Orario'), tab('ore', 'Ore'), tab('prof', `Prof (${orario.prof.length})`)),
+      scheda === 'ore' ? schedaOre() : scheda === 'prof' ? schedaProf() : schedaOrario());
+  }
+
+  // --- Ore di lezione ---
+  function schedaOre() {
+    const righe = bozza.ore.map((o, i) => {
+      const ini = h('input', { type: 'time', value: o.inizio, 'aria-label': `Inizio ${o.ora}ª ora`, required: true });
+      const fin = h('input', { type: 'time', value: o.fine, 'aria-label': `Fine ${o.ora}ª ora`, required: true });
+      ini.addEventListener('change', () => { o.inizio = ini.value; segnaModificato(); });
+      fin.addEventListener('change', () => { o.fine = fin.value; segnaModificato(); });
+      return h('li', { class: 'riga-lista' },
+        h('strong', { class: 'ora-num' }, `${o.ora}ª`), ini, h('span', { class: 'muted' }, '–'), fin,
+        i === bozza.ore.length - 1
+          ? h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': `Elimina ${o.ora}ª ora`, onclick: () => { bozza.ore.pop(); segnaModificato(); disegna(); } }, icon('cestino', 18))
+          : h('span', { style: 'width:36px' }));
+    });
+    return h('div', {},
+      h('ul', { class: 'lista-gruppo' }, righe.length ? righe : h('li', { class: 'riga-lista muted' }, 'Nessuna ora: aggiungile qui sotto.')),
+      h('div', { class: 'riga', style: 'margin-top:.75rem' },
+        h('button', {
+          class: 'btn btn-tinted btn-sm', type: 'button',
+          onclick: () => {
+            const ult = bozza.ore.at(-1);
+            if (bozza.ore.length >= 12) return;
+            bozza.ore.push({ ora: (ult?.ora || 0) + 1, inizio: ult?.fine || '08:00', fine: aggiungiMinuti(ult?.fine || '08:00', 60) });
+            segnaModificato(); disegna();
+          },
+        }, icon('piu', 16), 'Aggiungi ora'),
+        !bozza.ore.length
+          ? h('button', {
+              class: 'btn btn-sm', type: 'button',
+              onclick: () => {
+                bozza.ore = Array.from({ length: 6 }, (_, i) => ({ ora: i + 1, inizio: aggiungiMinuti('08:00', i * 60), fine: aggiungiMinuti('08:00', (i + 1) * 60) }));
+                segnaModificato(); disegna();
+              },
+            }, 'Usa 6 ore da 60 minuti (8:00–14:00)')
+          : null));
+  }
+
+  // --- Orario settimanale ---
+  function schedaOrario() {
+    if (!bozza.ore.length) {
+      return vuoto('Prima le ore di lezione', 'Imposta le ore (1ª, 2ª…) con gli orari, poi compila l\'orario.', 'orologio',
+        h('button', { class: 'btn btn-primary', onclick: () => { scheda = 'ore'; disegna(); } }, 'Imposta le ore'));
+    }
+    const giorni = h('div', { class: 'tabs tabs-piene giorni', role: 'tablist', 'aria-label': 'Giorno' },
+      [1, 2, 3, 4, 5, 6].map((g) => h('button', {
+        type: 'button', role: 'tab', 'aria-selected': String(giorno === g),
+        onclick: () => { giorno = g; disegna(); },
+      }, GIORNI_BREVI[g])));
+    const righe = bozza.ore.map((o) => {
+      const k = `${giorno}|${o.ora}`;
+      const slot = bozza.slot.get(k) || { giorno, ora: o.ora, subject_id: null, teacher_id: null };
+      const selMat = h('select', { 'aria-label': `Materia ${o.ora}ª ora` },
+        h('option', { value: '' }, '—'),
+        orario.materie.map((m) => h('option', { value: String(m.id), selected: slot.subject_id === m.id }, m.nome)));
+      const disegnaProf = () => {
+        const lista = slot.subject_id ? profPerMateria(orario, slot.subject_id) : orario.prof;
+        selProf.replaceChildren(h('option', { value: '' }, 'Prof —'),
+          ...lista.map((p) => h('option', { value: String(p.id), selected: slot.teacher_id === p.id }, p.nome)));
+      };
+      const selProf = h('select', { 'aria-label': `Prof ${o.ora}ª ora` });
+      disegnaProf();
+      const pallino = h('span', { class: 'pallino', style: `--colore:${slot.subject_id ? coloreMateria(orario.materie.find((m) => m.id === slot.subject_id)) : 'transparent'}` });
+      selMat.addEventListener('change', () => {
+        slot.subject_id = selMat.value ? Number(selMat.value) : null;
+        // Se c'è un solo prof per quella materia, lo propone.
+        const chi = orario.prof.filter((p) => p.materie.includes(slot.subject_id));
+        if (!slot.teacher_id && chi.length === 1) slot.teacher_id = chi[0].id;
+        bozza.slot.set(k, slot); segnaModificato(); disegnaProf();
+        pallino.style.setProperty('--colore', slot.subject_id ? coloreMateria(orario.materie.find((m) => m.id === slot.subject_id)) : 'transparent');
+      });
+      selProf.addEventListener('change', () => { slot.teacher_id = selProf.value ? Number(selProf.value) : null; bozza.slot.set(k, slot); segnaModificato(); });
+      return h('li', { class: 'riga-orario' },
+        h('div', { class: 'ro-ora' }, pallino, h('strong', {}, `${o.ora}ª`), h('small', {}, `${o.inizio}–${o.fine}`)),
+        h('div', { class: 'ro-campi' }, selMat, selProf));
+    });
+    return h('div', {},
+      giorni,
+      h('h2', { class: 'titolo-giorno' }, GIORNI[giorno]),
+      h('ul', { class: 'lista-gruppo' }, righe),
+      orario.prof.length ? null : h('p', { class: 'muted piccolo', style: 'margin-top:.75rem' }, 'Suggerimento: aggiungi prima i prof nella scheda "Prof".'));
+  }
+
+  // --- Prof ---
+  function schedaProf() {
+    const nomeMateria = new Map(orario.materie.map((m) => [m.id, m]));
+    return h('div', {},
+      orario.prof.length
+        ? h('ul', { class: 'lista-gruppo' }, orario.prof.map((p) =>
+            h('li', {},
+              h('button', { class: 'riga-lista riga-cliccabile', type: 'button', onclick: () => dialogoProf(p) },
+                h('span', { class: 'avatar-prof', 'aria-hidden': 'true' }, p.nome.replace(/^prof\.?(ssa)?\s*/i, '').charAt(0).toUpperCase() || '?'),
+                h('span', { class: 'rl-testo' },
+                  h('strong', {}, p.nome),
+                  h('span', { class: 'chip-lista' }, p.materie.length
+                    ? p.materie.map((id) => nomeMateria.get(id)).filter(Boolean).map((m) => h('span', { class: 'chip', style: `--colore:${coloreMateria(m)}` }, m.nome))
+                    : h('small', { class: 'muted' }, 'Nessuna materia'))),
+                icon('freccia', 16)))))
+        : vuoto('Nessun prof', 'Aggiungi i prof e le materie che possono interrogare.', 'utente'),
+      h('button', { class: 'btn btn-tinted btn-sm', style: 'margin-top:.75rem', type: 'button', onclick: () => dialogoProf(null) }, icon('piu', 16), 'Nuovo prof'));
+  }
+
+  async function dialogoProf(p) {
+    const fatto = await dialogo(p ? 'Modifica prof' : 'Nuovo prof', (chiudi) => {
+      const nome = h('input', { required: true, maxlength: 80, value: p?.nome || '', placeholder: 'Es. Prof.ssa Rossi' });
+      const scelte = new Set(p?.materie || []);
+      const lista = h('ul', { class: 'lista-scelta' }, orario.materie.map((m) => {
+        const cb = h('input', { type: 'checkbox', checked: scelte.has(m.id) });
+        cb.addEventListener('change', () => { if (cb.checked) scelte.add(m.id); else scelte.delete(m.id); });
+        return h('li', {}, h('label', { class: 'check' }, cb, h('span', { class: 'pallino', style: `--colore:${coloreMateria(m)}` }), m.nome));
+      }));
+      return h('form', {
+        onsubmit: async (e) => {
+          e.preventDefault();
+          if (await esegui(() => api.salvaProf(p?.id ?? null, nome.value.trim(), [...scelte]), 'Prof salvato')) chiudi(true);
+        },
+      },
+        campo('Nome', nome),
+        h('div', { class: 'campo' }, h('span', {}, 'Materie che può interrogare'),
+          h('small', {}, 'Es. la prof di Italiano che può interrogare anche in Storia: spunta entrambe.'), lista),
+        h('div', { class: 'azioni' },
+          p ? h('button', {
+            class: 'btn btn-ghost', type: 'button', style: 'color:var(--danger);margin-right:auto',
+            onclick: async () => {
+              const ok = await conferma({ titolo: `Eliminare ${p.nome}?`, messaggio: 'Verrà tolto dall\'orario e dalle sessioni (le sessioni restano).', ok: 'Elimina', pericolo: true });
+              if (ok && await esegui(() => api.eliminaProf(p.id), 'Prof eliminato')) chiudi(true);
+            },
+          }, 'Elimina') : null,
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
+          h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salva')));
+    });
+    if (fatto) { await carica(true); scheda = 'prof'; disegna(); }
+  }
+
+  mount(cont, skeleton(3));
+  carica(true);
+  window.addEventListener('beforeunload', avvisoUscita);
+  function avvisoUscita(e) { if (modificato) { e.preventDefault(); e.returnValue = ''; } }
+  return {
+    aggiorna: () => carica(false),
+    distruggi: () => window.removeEventListener('beforeunload', avvisoUscita),
+  };
+}
+
+// ---------------------------------------------------------------------
+//  Cestino (solo admin)
+// ---------------------------------------------------------------------
+
+export function staffCestino() {
+  if (!guardia({ admin: true })) return;
+  const cont = h('div');
+  mount(vistaEl(), indietro('#/staff', 'Area staff'),
+    intestazione('Cestino', 'Sessioni eliminate negli ultimi 90 giorni. Ripristinandole tornano con le persone assegnate.'), cont);
+  const vista = creaVista(cont, {
+    carica: () => api.cestino(),
+    disegna: (lista) => lista.length
+      ? h('ul', { class: 'lista-gruppo' }, lista.map((c) => h('li', { class: 'riga-lista riga-cestino' },
+          h('div', { class: 'rl-testo' },
+            h('strong', {}, `${c.materia || 'Materia eliminata'} · ${c.data ? dataTitolo(c.data) : ''}${c.ora ? ` · ${c.ora}ª ora` : ''}`),
+            c.persone?.length ? h('small', {}, c.persone.join(', ')) : h('small', { class: 'muted' }, 'Nessuno assegnato'),
+            h('small', { class: 'muted' }, `Eliminata il ${dataOraBreve(c.eliminata_il)}${c.da ? ` da ${c.da}` : ''}${c.motivo ? ` · Motivo: ${c.motivo}` : ''}`)),
+          h('button', {
+            class: 'btn btn-tinted btn-sm', type: 'button',
+            onclick: async () => {
+              const r = await esegui(() => api.ripristina(c.id));
+              if (r) {
+                toast(`Sessione ripristinata${r.saltati.length ? ` · non rimessi (già altrove o non attivi): ${r.saltati.join(', ')}` : ''}`, 'ok', 7000);
+                vista.aggiorna('azione');
+              }
+            },
+          }, icon('annulla', 16), 'Ripristina'))))
+      : vuoto('Il cestino è vuoto', 'Qui finiscono le sessioni eliminate da admin e rappresentanti.', 'cestino'),
+  });
+  return vista;
 }

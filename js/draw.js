@@ -92,7 +92,7 @@ function coriandoli(contenitore) {
  * @param {Array}  o.nomiPool      nomi del sorteggio ("Nome Cognome"), in ordine
  * @returns {Promise<void>} risolta alla chiusura
  */
-export function mostraEstrazione({ materia, data, estratti, nomiPool }) {
+export function mostraEstrazione({ materia, data, dettaglio = '', colore = '', estratti, nomiPool }) {
   return new Promise((resolve) => {
     const ridotto = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nomeDi = (p) => `${p.nome} ${p.cognome}`;
@@ -139,6 +139,7 @@ export function mostraEstrazione({ materia, data, estratti, nomiPool }) {
     };
 
     const overlay = h('div', {
+      style: colore ? `--colore:${colore}` : null,
       class: 'estrazione', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Estrazione di ${materia}`, tabindex: '-1',
     },
       h('div', { class: 'estrazione-barra' },
@@ -148,7 +149,7 @@ export function mostraEstrazione({ materia, data, estratti, nomiPool }) {
         document.fullscreenEnabled ? btnSchermo : null),
       h('div', { class: 'estrazione-head' },
         h('h2', {}, materia),
-        h('p', {}, dataTitolo(data))),
+        h('p', {}, dataTitolo(data), dettaglio ? ` · ${dettaglio}` : '')),
       centro,
       lista,
       h('div', { class: 'estrazione-azioni' }, btnSalta, btnTutto, btnChiudi));

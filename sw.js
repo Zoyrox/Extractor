@@ -8,7 +8,7 @@
 //   realtime si vedrebbero per un attimo i dati vecchi.
 // - Scritture, login e chiamate dello staff: mai in cache.
 
-const VERSIONE = 'v1.2.0';
+const VERSIONE = 'v1.3.0';
 const CACHE_SHELL = `shell-${VERSIONE}`;
 const CACHE_CDN = 'cdn-v1';
 const CACHE_DATI = 'dati-v1';
@@ -32,6 +32,7 @@ const SHELL = [
   './js/realtime.js',
   './js/router.js',
   './js/ui.js',
+  './js/orario.js',
   './js/views/common.js',
   './js/views/public.js',
   './js/views/staff.js',

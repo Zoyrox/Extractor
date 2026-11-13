@@ -140,13 +140,19 @@ export const api = {
   rimuovi: (assignmentId, motivo) => rpc('staff_remove_assignment', { p_assignment_id: assignmentId, p_motivo: motivo || null }),
   sposta: (assignmentId, target, motivo) =>
     rpc('staff_move_assignment', { p_assignment_id: assignmentId, p_target_session_id: target, p_motivo: motivo || null }),
-  modificaSessione: (id, data, argomento, max, motivo) =>
-    rpc('staff_update_session', { p_session_id: id, p_data: data, p_argomento: argomento, p_max: max, p_motivo: motivo || null }),
+  modificaSessione: (id, data, argomento, max, motivo, ora, teacherId) =>
+    rpc('staff_update_session', { p_session_id: id, p_data: data, p_argomento: argomento, p_max: max, p_motivo: motivo || null, p_ora: ora ?? null, p_teacher_id: teacherId ?? null, p_imposta_ora_prof: true }),
 
   // -------- solo admin --------
-  nuoveSessioni: (subjectId, sessioni) => rpc('admin_add_sessions', { p_subject_id: subjectId, p_sessioni: sessioni }),
-  eliminaSessione: (id, motivo) => rpc('admin_delete_session', { p_session_id: id, p_motivo: motivo || null }),
-  salvaMateria: (id, nome, slug, ordine) => rpc('admin_save_subject', { p_id: id, p_nome: nome, p_slug: slug, p_ordine: ordine }),
+  nuoveSessioni: (subjectId, sessioni) => rpc('staff_add_sessions', { p_subject_id: subjectId, p_sessioni: sessioni }),
+  eliminaSessione: (id, motivo) => rpc('staff_delete_session', { p_session_id: id, p_motivo: motivo || null }),
+  salvaMateria: (id, nome, slug, ordine, colore) => rpc('admin_save_subject_v2', { p_id: id, p_nome: nome, p_slug: slug, p_ordine: ordine, p_colore: colore || null }),
+  orario: () => rpc('staff_get_orario'),
+  salvaOrario: (ore, slot) => rpc('admin_save_orario', { p_ore: ore, p_slot: slot }),
+  salvaProf: (id, nome, materie) => rpc('admin_save_teacher', { p_id: id, p_nome: nome, p_subject_ids: materie }),
+  eliminaProf: (id) => rpc('admin_delete_teacher', { p_id: id }),
+  cestino: () => rpc('admin_list_cestino'),
+  ripristina: (id) => rpc('admin_restore_session', { p_id: id }),
   eliminaMateria: (id) => rpc('admin_delete_subject', { p_id: id }),
   esclusione: (subjectId, studentId, escluso, motivo) =>
     rpc('admin_set_exclusion', { p_subject_id: subjectId, p_student_id: studentId, p_escluso: escluso, p_motivo: motivo || null }),

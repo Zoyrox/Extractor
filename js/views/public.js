@@ -10,6 +10,12 @@ import {
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { apriEsportazione } from '../export.js';
+import { descriviOra, descriviOraProf, coloreMateria } from '../orario.js';
+
+/** Cerchio colorato con l'iniziale della materia. */
+export function avatarMateria(m) {
+  return h('span', { class: 'avatar-materia', style: `--colore:${coloreMateria(m)}`, 'aria-hidden': 'true' }, (m.nome || '?').trim().charAt(0).toUpperCase());
+}
 
 // ---------------------------------------------------------------------
 //  Accesso con codice di classe
@@ -125,7 +131,7 @@ function cardMieDate(mie) {
       ? h('ul', { class: 'persone' }, prossime.map((x) =>
           h('li', { class: 'persona' },
             h('a', { class: 'nome', href: `#/materia/${encodeURIComponent(x.slug)}` }, x.materia),
-            h('span', {}, dataTitolo(x.data)),
+            h('span', {}, dataTitolo(x.data), descriviOra(x) ? ` · ${descriviOra(x)}` : ''),
             quandoRelativo(x.data) ? h('span', { class: 'tag accent' }, quandoRelativo(x.data)) : null,
             badge(x.stato),
             x.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null)))
@@ -138,14 +144,17 @@ function cardMateria(m) {
   const rel = p ? quandoRelativo(p.data) : '';
   return h('a', {
     class: 'card materia-card', href: `#/materia/${encodeURIComponent(m.slug)}`,
-    'data-key': `m-${m.id}`, 'data-firma': firma([m.nome, p]),
+    'data-key': `m-${m.id}`, 'data-firma': firma([m.nome, m.colore, p]),
+    style: `--colore:${coloreMateria(m)}`,
   },
     h('div', { class: 'card-head' },
+      avatarMateria(m),
       h('h2', {}, m.nome),
       h('span', { class: 'freccia' }, icon('freccia', 18))),
     p
       ? [
           h('p', { class: 'prossima-data' }, 'Prossima: ', dataLunga(p.data), rel ? h('span', { class: 'tag accent', style: 'margin-left:.4rem' }, rel) : null),
+          descriviOraProf(p) ? h('p', { class: 'ora-prof' }, icon('orologio', 14), descriviOraProf(p)) : null,
           p.argomento ? h('p', { class: 'meta' }, testoConLink(p.argomento, false)) : null,
           h('p', { class: 'meta' }, p.n_assegnati ? `${p.n_assegnati} di ${p.max_interrogati} già estratti` : `${p.max_interrogati} da interrogare · estrazione da fare`),
         ]
@@ -184,7 +193,7 @@ function disegnaMateria(d) {
     h('a', { href: '#/', class: 'btn btn-ghost btn-sm', style: 'margin-bottom:.5rem' }, icon('indietro', 16), 'Materie'),
     h('div', { class: 'titolo-pagina' },
       h('div', { style: 'flex:1 1 220px;min-width:0' },
-        h('h1', {}, d.materia.nome),
+        h('h1', {}, avatarMateria(d.materia), d.materia.nome),
         h('p', { class: 'sotto' }, `${d.sessioni.length} ${d.sessioni.length === 1 ? 'sessione' : 'sessioni'}`)),
       h('div', { class: 'riga' },
         h('button', { class: 'btn btn-sm', onclick: condividi }, icon('link', 16), 'Condividi'),
@@ -226,6 +235,7 @@ export function cardSessione(s, { prossima = false, passata = false } = {}) {
           prossima ? h('span', { class: 'tag accent' }, 'Prossima') : null,
           rel && rel !== 'passata' ? h('span', { class: 'tag' }, rel) : null,
           passata ? h('span', { class: 'tag' }, 'Passata') : null),
+        descriviOraProf(s) ? h('p', { class: 'ora-prof' }, icon('orologio', 14), descriviOraProf(s)) : null,
         s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
         h('p', { class: 'posti' }, `${presenti.length} di ${s.max_interrogati} interrogati`))),
     presenti.length || s.non_presenti.length
@@ -371,7 +381,7 @@ function disegnaRicerca(risultati, q) {
         ? h('ul', { class: 'persone' }, r.date.map((x) =>
             h('li', { class: 'persona', style: giorniDa(x.data) < 0 ? 'opacity:.75' : '' },
               h('a', { class: 'nome', href: `#/materia/${encodeURIComponent(x.slug)}` }, x.materia),
-              h('span', {}, dataTitolo(x.data)),
+              h('span', {}, dataTitolo(x.data), descriviOra(x) ? ` · ${descriviOra(x)}` : ''),
               badge(x.stato),
               x.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
               x.argomento ? h('span', { class: 'nota' }, testoConLink(x.argomento)) : null)))

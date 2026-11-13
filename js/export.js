@@ -5,6 +5,7 @@
 
 import { h, icon, dialogo, toast, testoBreve, dataLunga, dataOra, oggiRoma, STATI } from './ui.js';
 import { CONFIG } from './config.js';
+import { descriviOraProf } from './orario.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js';
 
@@ -15,7 +16,7 @@ function preparaDati(d, includiPassate) {
     .map((s) => ({
       data: s.data,
       titolo: capitalizza(dataLunga(s.data)),
-      argomento: testoBreve(s.argomento),
+      argomento: [descriviOraProf(s), testoBreve(s.argomento)].filter(Boolean).join(' — '),
       max: s.max_interrogati,
       passata: s.data < d.oggi,
       persone: [...s.interrogati, ...s.non_presenti].map((p) => ({
