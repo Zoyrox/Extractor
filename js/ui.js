@@ -353,3 +353,40 @@ export function testoConLink(testo, cliccabile = true) {
 export function testoBreve(testo) {
   return testoConLink(testo, false).join('');
 }
+
+/**
+ * Menu di azioni (foglio dal basso su mobile), stile app nativa.
+ *   voci: [{ id, icona, testo, descr?, pericolo?, disabled? }, null (= separatore), ...]
+ * Restituisce l'id scelto, oppure null.
+ */
+export function foglioAzioni({ titolo, sottotitolo = '', voci }) {
+  return dialogo(titolo, (chiudi) => h('div', { class: 'foglio-azioni' },
+    sottotitolo ? h('p', { class: 'muted piccolo fa-sotto' }, sottotitolo) : null,
+    h('ul', { class: 'fa-lista' }, voci.map((v) => v === null
+      ? h('li', { class: 'fa-sep', 'aria-hidden': 'true' })
+      : h('li', {},
+          h('button', {
+            type: 'button', class: `fa-voce ${v.pericolo ? 'pericolo' : ''}`, disabled: !!v.disabled,
+            onclick: () => chiudi(v.id),
+          },
+            h('span', { class: 'fa-icona' }, icon(v.icona, 20)),
+            h('span', { class: 'fa-testo' }, h('span', {}, v.testo), v.descr ? h('small', {}, v.descr) : null)))))));
+}
+
+/** Stepper numerico "−  3  +" (restituisce { el, valore() }). */
+export function stepper(valore, { min = 1, max = 40, etichetta = 'Numero' } = {}) {
+  let v = valore;
+  const out = h('output', { 'aria-live': 'polite' }, String(v));
+  const meno = h('button', { type: 'button', class: 'btn-icon sm', 'aria-label': `Diminuisci ${etichetta.toLowerCase()}` }, h('span', { 'aria-hidden': 'true', class: 'st-segno' }, '−'));
+  const piu = h('button', { type: 'button', class: 'btn-icon sm', 'aria-label': `Aumenta ${etichetta.toLowerCase()}` }, h('span', { 'aria-hidden': 'true', class: 'st-segno' }, '+'));
+  const aggiorna = () => { out.textContent = String(v); meno.disabled = v <= min; piu.disabled = v >= max; };
+  meno.addEventListener('click', () => { v = Math.max(min, v - 1); aggiorna(); });
+  piu.addEventListener('click', () => { v = Math.min(max, v + 1); aggiorna(); });
+  aggiorna();
+  return { el: h('div', { class: 'stepper', role: 'group', 'aria-label': etichetta }, meno, out, piu), valore: () => v };
+}
+
+/** Iniziali di una persona per l'avatar ("MR"). */
+export function iniziali(p) {
+  return `${(p.nome || '').trim().charAt(0)}${(p.cognome || '').trim().charAt(0)}`.toUpperCase();
+}

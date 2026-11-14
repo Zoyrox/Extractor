@@ -6,7 +6,7 @@ import { prefs } from '../prefs.js';
 import { vai, sostituisciQuery } from '../router.js';
 import {
   h, icon, mount, badge, toast, vuoto, dataLunga, dataTitolo, dataOra, quandoRelativo, giorniDa,
-  meseBreve, giornoNumero, testoConLink, nomeCompleto, conferma,
+  meseBreve, giornoNumero, testoConLink, iniziali, nomeCompleto, conferma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { apriEsportazione } from '../export.js';
@@ -114,9 +114,28 @@ export function home() {
       if (!d.materie.length) {
         return vuoto('Nessuna materia', 'L\'amministratore non ha ancora creato le materie.', 'libro');
       }
-      return h('div', {}, cardMieDate(d.mie), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
+      return h('div', {}, cardMieDate(d.mie), cardProssima(d.materie), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
     },
   });
+}
+
+/** Card in evidenza: la prossima interrogazione della classe (tra tutte le materie). */
+function cardProssima(materie) {
+  const prossime = materie.filter((m) => m.prossima)
+    .sort((a, b) => (a.prossima.data + (a.prossima.ora || 9)).localeCompare(b.prossima.data + (b.prossima.ora || 9)));
+  const m = prossime[0];
+  if (!m) return null;
+  const p = m.prossima;
+  const rel = quandoRelativo(p.data);
+  return h('a', {
+    class: 'hero-prossima', href: `#/materia/${encodeURIComponent(m.slug)}`, style: `--colore:${coloreMateria(m)}`,
+    'data-key': 'hero', 'data-firma': firma([m.id, p]),
+  },
+    h('span', { class: 'hp-etichetta' }, 'Prossima interrogazione'),
+    h('span', { class: 'hp-materia' }, m.nome),
+    h('span', { class: 'hp-data' }, dataTitolo(p.data), rel ? h('span', { class: 'hp-rel' }, rel) : null),
+    descriviOraProf(p) ? h('span', { class: 'hp-ora' }, icon('orologio', 16), descriviOraProf(p)) : null,
+    h('span', { class: 'hp-posti' }, p.n_assegnati ? `${p.n_assegnati} di ${p.max_interrogati} estratti` : `${p.max_interrogati} da interrogare · estrazione da fare`));
 }
 
 /** "Le mie date": le prossime interrogazioni di chi ha salvato il proprio nome. */
@@ -168,12 +187,17 @@ function cardMateria(m) {
 export function materia({ slug }) {
   const cont = h('div');
   mount(vistaEl(), cont);
-  return creaVista(cont, {
+  cont.addEventListener('ridisegna', () => vista.ridisegna());
+  const vista = creaVista(cont, {
     carica: () => api.materia(slug),
     disegna: (d) => disegnaMateria(d),
     righeSkeleton: 4,
   });
+  return vista;
 }
+
+/** Scheda scelta (Prossime/Passate) per ogni materia, ricordata tra un aggiornamento e l'altro. */
+const schedaMateria = new Map();
 
 function disegnaMateria(d) {
   const oggi = d.oggi;
@@ -189,26 +213,34 @@ function disegnaMateria(d) {
     } catch { /* condivisione annullata */ }
   };
 
-  return h('div', {},
-    h('a', { href: '#/', class: 'btn btn-ghost btn-sm', style: 'margin-bottom:.5rem' }, icon('indietro', 16), 'Materie'),
-    h('div', { class: 'titolo-pagina' },
-      h('div', { style: 'flex:1 1 220px;min-width:0' },
-        h('h1', {}, avatarMateria(d.materia), d.materia.nome),
-        h('p', { class: 'sotto' }, `${d.sessioni.length} ${d.sessioni.length === 1 ? 'sessione' : 'sessioni'}`)),
+  const scheda = schedaMateria.get(d.materia.slug) || 'prossime';
+  const lista = scheda === 'passate' ? passate : future;
+  const tab = (id, testo) => h('button', {
+    type: 'button', role: 'tab', 'aria-selected': String(scheda === id),
+    onclick: (e) => { schedaMateria.set(d.materia.slug, id); e.currentTarget.dispatchEvent(new CustomEvent('ridisegna', { bubbles: true })); },
+  }, testo);
+
+  return h('div', { style: `--colore:${coloreMateria(d.materia)}` },
+    h('div', { class: 'barra-pagina' },
+      h('a', { href: '#/', class: 'btn btn-ghost btn-sm' }, icon('indietro', 16), 'Materie'),
       h('div', { class: 'riga' },
-        h('button', { class: 'btn btn-sm', onclick: condividi }, icon('link', 16), 'Condividi'),
-        h('button', { class: 'btn btn-sm', onclick: () => apriEsportazione(d) }, icon('download', 16), 'Esporta'))),
+        h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Condividi il link', title: 'Condividi', onclick: condividi }, icon('condividi', 20)),
+        h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Esporta immagine o PDF', title: 'Esporta', onclick: () => apriEsportazione(d) }, icon('download', 20)))),
+    h('header', { class: 'hero-materia' },
+      avatarMateria(d.materia),
+      h('div', { class: 'hm-testo' },
+        h('h1', {}, d.materia.nome),
+        h('p', {}, future.length ? `${future.length} ${future.length === 1 ? 'interrogazione' : 'interrogazioni'} in programma` : 'Nessuna interrogazione in programma'))),
 
     d.sessioni.length === 0
-      ? vuoto('Nessuna sessione', 'Non sono ancora state fissate date per questa materia.')
-      : h('div', { class: 'stack' },
-          future.length ? future.map((s) => cardSessione(s, { prossima: s.id === idProssima })) :
-            h('div', { class: 'card' }, h('p', { class: 'muted', style: 'margin:0' }, 'Nessuna interrogazione in programma.')),
-          passate.length
-            ? dettagli(`passate-${d.materia.slug}`, false,
-                h('span', { class: 'btn btn-ghost btn-sm' }, icon('orologio', 16), `Sessioni passate (${passate.length})`),
-                h('div', { class: 'stack', style: 'margin-top:.75rem' }, passate.map((s) => cardSessione(s, { passata: true }))))
-            : null),
+      ? vuoto('Nessuna sessione', 'Non sono ancora state fissate date per questa materia.', 'calendario')
+      : [
+          h('div', { class: 'tabs tabs-piene', role: 'tablist', 'aria-label': 'Sessioni' },
+            tab('prossime', `Prossime · ${future.length}`), tab('passate', `Passate · ${passate.length}`)),
+          lista.length
+            ? h('div', { class: 'stack' }, lista.map((s) => cardSessione(s, { prossima: s.id === idProssima, passata: scheda === 'passate' })))
+            : vuoto(scheda === 'passate' ? 'Nessuna sessione passata' : 'Nessuna interrogazione in programma', null, 'calendario'),
+        ],
 
     d.ultime_modifiche.length
       ? h('section', { class: 'sezione' },
@@ -247,9 +279,12 @@ export function cardSessione(s, { prossima = false, passata = false } = {}) {
 
 function rigaPersona(p) {
   return h('li', { class: 'persona', 'data-key': `a-${p.id}`, 'data-firma': firma([p.stato, p.nota]) },
-    h('span', { class: 'nome' }, nomeCompleto(p)),
-    badge(p.stato),
-    p.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
+    h('span', { class: `avatar-persona st-${p.stato}`, 'aria-hidden': 'true' }, iniziali(p)),
+    h('span', { class: 'persona-testo' },
+      h('span', { class: 'nome' }, nomeCompleto(p)),
+      h('span', { class: 'persona-tag' },
+        badge(p.stato),
+        p.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null)),
     p.nota ? h('span', { class: 'nota' }, 'Motivo: ', p.nota) : null);
 }
 

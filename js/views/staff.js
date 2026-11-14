@@ -6,13 +6,13 @@
 import { sb, api, sessione, caricaProfilo } from '../api.js';
 import { vai } from '../router.js';
 import {
-  h, icon, mount, badge, toast, vuoto, skeleton, erroreBox, conferma, dialogo, dataLunga, dataTitolo, dataCompleta,
+  h, icon, mount, badge, toast, vuoto, skeleton, erroreBox, foglioAzioni, stepper, iniziali, conferma, dialogo, dataLunga, dataTitolo, dataCompleta,
   meseBreve, giornoNumero, testoConLink, testoBreve, nomeCompleto, norm, slugify, STATI, oggiRoma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { avatarMateria } from './public.js';
 import { mostraEstrazione } from '../draw.js';
-import { giorniSuggeriti, profPerMateria, descriviOraProf, coloreMateria, PALETTE, GIORNI, GIORNI_BREVI } from '../orario.js';
+import { giorniSuggeriti, profPerMateria, descriviOraProf, coloreMateria, giornoSettimana, PALETTE, GIORNI, GIORNI_BREVI } from '../orario.js';
 
 // ---------------------------------------------------------------------
 //  Utilità
@@ -292,9 +292,9 @@ export function staffMateria({ slug }) {
   const barra = h('div', { class: 'barra-selezione', hidden: true, role: 'region', 'aria-label': 'Azioni sulle persone selezionate' });
   mount(vistaEl(), cont, barra);
   // Stato della pagina, conservato tra un aggiornamento realtime e l'altro.
-  const stato = { sel: new Map(), riordino: null, ordine: null, dati: null, trascinando: false };
+  const stato = { sel: new Map(), selezione: false, riordino: null, ordine: null, dati: null, trascinando: false, scheda: 'prossime' };
   let vista = null;
-  const aggiornaBarra = () => disegnaBarra(barra, stato, () => vista.aggiorna('azione'));
+  const aggiornaBarra = () => disegnaBarra(barra, stato, () => { stato.selezione = false; vista.aggiorna('azione'); });
   vista = creaVista(cont, {
     carica: () => api.staffMateria(slug),
     disegna: (d) => {
@@ -395,53 +395,154 @@ async function dialogoSpostaMolti(stato, ids) {
   });
 }
 
-/** Casella di selezione per una persona. */
-function casella(a, s, stato, aggiornaBarra) {
-  const cb = h('input', { type: 'checkbox', class: 'sel', 'aria-label': `Seleziona ${nomeCompleto(a)}`, checked: stato.sel.has(a.id) });
-  cb.addEventListener('change', () => {
-    if (cb.checked) stato.sel.set(a.id, { a, s }); else stato.sel.delete(a.id);
-    cb.closest('.persona').classList.toggle('selezionata', cb.checked);
-    aggiornaBarra();
+/** Riga di una persona: toccandola si apre il menu delle sue azioni (o si seleziona). */
+function rigaPersona(a, s, d, stato, aggiornaBarra, aggiorna, extra = null) {
+  const sel = stato.selezione;
+  const scelta = stato.sel.has(a.id);
+  const cb = sel ? h('input', { type: 'checkbox', class: 'sel', tabindex: '-1', 'aria-hidden': 'true', checked: scelta }) : null;
+  const li = h('li', {
+    class: `persona persona-tocco ${scelta ? 'selezionata' : ''}`, 'data-key': `a-${a.id}`, 'data-firma': firma([a.stato, a.nota, a.volontario, sel]),
+  },
+    h('button', {
+      type: 'button', class: 'persona-btn',
+      'aria-label': sel ? `${scelta ? 'Deseleziona' : 'Seleziona'} ${nomeCompleto(a)}` : `Azioni per ${nomeCompleto(a)}`,
+      'aria-pressed': sel ? String(scelta) : null,
+      onclick: async () => {
+        if (stato.selezione) {
+          if (stato.sel.has(a.id)) stato.sel.delete(a.id); else stato.sel.set(a.id, { a, s });
+          const ora = stato.sel.has(a.id);
+          li.classList.toggle('selezionata', ora);
+          if (cb) cb.checked = ora;
+          li.querySelector('.persona-btn').setAttribute('aria-pressed', String(ora));
+          aggiornaBarra();
+        } else if (await azioniPersona(a, s, d)) aggiorna();
+      },
+    },
+      cb,
+      h('span', { class: `avatar-persona st-${a.stato}`, 'aria-hidden': 'true' }, iniziali(a)),
+      h('span', { class: 'persona-testo' },
+        h('span', { class: 'nome' }, nomeCompleto(a)),
+        h('span', { class: 'persona-tag' },
+          badge(a.stato),
+          a.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
+          extra)),
+      sel ? null : h('span', { class: 'chevron', 'aria-hidden': 'true' }, icon('freccia', 16))),
+    a.nota ? h('span', { class: 'nota' }, 'Motivo: ', a.nota) : null);
+  return li;
+}
+
+/** Menu delle azioni su una persona. */
+async function azioniPersona(a, s, d) {
+  const scelta = await foglioAzioni({
+    titolo: nomeCompleto(a),
+    sottotitolo: `${dataTitolo(s.data)}${s.ora ? ` · ${s.ora}ª ora` : ''} · ${STATI[a.stato].testo}`,
+    voci: [
+      { id: 'interrogato', icona: 'check', testo: 'Interrogato', disabled: a.stato === 'interrogato' },
+      { id: 'assente', icona: 'x', testo: 'Assente', descr: 'Finisce in "Da riassegnare"', disabled: a.stato === 'assente' },
+      { id: 'rimandato', icona: 'rimanda', testo: 'Rimandato', descr: 'Finisce in "Da riassegnare"', disabled: a.stato === 'rimandato' },
+      { id: 'assegnato', icona: 'calendario', testo: 'Riporta ad assegnato', disabled: a.stato === 'assegnato' },
+      null,
+      { id: 'sposta', icona: 'sposta', testo: 'Sposta ad altra data' },
+      { id: 'rimuovi', icona: 'cestino', testo: 'Togli da questo giorno', descr: 'Torna nel sorteggio', pericolo: true },
+    ],
   });
-  return cb;
+  if (!scelta) return false;
+  if (scelta === 'sposta') return dialogoSposta(a, d, false, '', s.id);
+  if (scelta === 'rimuovi') {
+    const r = await conferma({ titolo: `Togliere ${nomeCompleto(a)}?`, messaggio: 'Verrà tolto da questa sessione e tornerà nel sorteggio della materia.', ok: 'Togli', pericolo: true, chiediMotivo: true });
+    return !!(r && await esegui(() => api.rimuovi(a.id, r.motivo), 'Tolto dalla sessione'));
+  }
+  // Per assenti e rimandati chiediamo il motivo (facoltativo).
+  let motivo = '';
+  if (scelta === 'assente' || scelta === 'rimandato') {
+    const r = await conferma({ titolo: `${nomeCompleto(a)}: ${STATI[scelta].testo.toLowerCase()}`, ok: 'Conferma', chiediMotivo: true });
+    if (!r) return false;
+    motivo = r.motivo;
+  }
+  return !!(await esegui(() => api.stato(a.id, scelta, motivo), `${nomeCompleto(a)}: ${STATI[scelta].testo.toLowerCase()}`));
+}
+
+/** Menu delle azioni su una sessione (tutto ciò che non è "Estrai"). */
+async function azioniSessione(s, d, stato, aggiorna, ridisegna) {
+  const copiabili = s.assegnazioni.some((a) => a.stato === 'assegnato' || a.stato === 'interrogato');
+  const scelta = await foglioAzioni({
+    titolo: dataTitolo(s.data),
+    sottotitolo: [descriviOraProf(s), `${s.assegnazioni.length} di ${s.max_interrogati} posti`].filter(Boolean).join(' · '),
+    voci: [
+      { id: 'aggiungi', icona: 'mano', testo: 'Aggiungi volontari o persone', descr: 'Più persone insieme' },
+      s.assegnazioni.length > 1 ? { id: 'ordina', icona: 'ordina', testo: 'Cambia ordine', descr: 'Chi va per primo' } : null,
+      copiabili ? { id: 'copia', icona: 'sposta', testo: 'Copia in un\'altra materia', descr: 'Stessi interrogati, stessa data' } : null,
+      { id: 'modifica', icona: 'matita', testo: 'Modifica data, ora e prof' },
+      s.ultima_estrazione ? { id: 'annulla', icona: 'annulla', testo: 'Annulla ultima estrazione', descr: 'Motivo obbligatorio' } : null,
+      null,
+      { id: 'elimina', icona: 'cestino', testo: 'Elimina sessione', pericolo: true, descr: 'L\'admin può recuperarla dal cestino' },
+    ].filter((v, i, arr) => v !== null || (i > 0 && arr[i - 1] !== null)),
+  });
+  let ok = false;
+  if (scelta === 'aggiungi') ok = await dialogoAggiungi(s, d);
+  else if (scelta === 'ordina') { stato.riordino = s.id; stato.ordine = s.assegnazioni.map((a) => a.id); ridisegna(); }
+  else if (scelta === 'copia') ok = await dialogoCopia(s, d);
+  else if (scelta === 'modifica') ok = await dialogoSessione(s, d);
+  else if (scelta === 'annulla') ok = await annullaEstrazione(s);
+  else if (scelta === 'elimina') ok = await eliminaSessione(s);
+  if (ok) aggiorna();
 }
 
 function disegnaGestione(d, vista, stato, aggiornaBarra) {
   const aggiorna = () => vista.aggiorna('azione');
+  const ridisegna = () => vista.ridisegna();
   const oggi = d.oggi;
   const daRiassegnare = d.sessioni.flatMap((s) => s.assegnazioni
     .filter((a) => a.stato === 'assente' || a.stato === 'rimandato')
     .map((a) => ({ ...a, sessione: s })));
   const future = d.sessioni.filter((s) => s.data >= oggi);
   const passate = d.sessioni.filter((s) => s.data < oggi).reverse();
+  const lista = stato.scheda === 'passate' ? passate : future;
+  const ciSonoPersone = d.sessioni.some((s) => s.assegnazioni.length);
 
-  return h('div', {},
-    indietro('#/staff', 'Area staff'),
-    intestazione([avatarMateria(d.materia), d.materia.nome], `Nel sorteggio: ${d.pool.length} ${d.pool.length === 1 ? 'studente' : 'studenti'}`,
-      h('button', { class: 'btn btn-primary btn-sm', onclick: async () => { if (await dialogoNuoveSessioni(d)) aggiorna(); } }, icon('piu', 16), 'Nuove sessioni'),
-      h('a', { class: 'btn btn-sm', href: `#/materia/${encodeURIComponent(d.materia.slug)}` }, 'Vista pubblica')),
+  const toggleSelezione = () => {
+    stato.selezione = !stato.selezione;
+    if (!stato.selezione) stato.sel.clear();
+    ridisegna();
+    aggiornaBarra();
+  };
+  const scheda = (id, testo) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(stato.scheda === id), onclick: () => { stato.scheda = id; ridisegna(); } }, testo);
+
+  return h('div', { style: `--colore:${coloreMateria(d.materia)}` },
+    h('div', { class: 'barra-pagina' },
+      indietro('#/staff', 'Staff'),
+      ciSonoPersone ? h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: toggleSelezione }, stato.selezione ? 'Fine' : 'Seleziona') : null),
+    h('header', { class: 'hero-materia' },
+      avatarMateria(d.materia),
+      h('div', { class: 'hm-testo' },
+        h('h1', {}, d.materia.nome),
+        h('p', {}, `${d.pool.length} nel sorteggio · ${future.length} ${future.length === 1 ? 'sessione' : 'sessioni'} in programma`)),
+      h('a', { class: 'btn-icon', href: `#/materia/${encodeURIComponent(d.materia.slug)}`, 'aria-label': 'Vista pubblica', title: 'Vista pubblica' }, icon('link', 20))),
+
+    h('button', { class: 'btn btn-primary btn-blocco btn-grande', type: 'button', onclick: async () => { if (await dialogoNuoveSessioni(d)) aggiorna(); } }, icon('piu', 20), 'Nuove sessioni'),
+
+    stato.selezione ? h('p', { class: 'suggerimento' }, icon('seleziona', 16), 'Tocca le persone da selezionare, poi scegli l\'azione in basso.') : null,
 
     daRiassegnare.length
-      ? h('section', { class: 'card', style: 'margin-bottom:1rem;border-color:var(--b-rimandato-fg)', 'data-key': 'riassegna', 'data-firma': firma(daRiassegnare.map((a) => a.id)) },
-          h('h2', { class: 'riga' }, icon('esclamativo', 18), `Da riassegnare (${daRiassegnare.length})`),
-          h('ul', { class: 'persone' }, daRiassegnare.map((a) =>
-            h('li', { class: `persona ${stato.sel.has(a.id) ? 'selezionata' : ''}` },
-              casella(a, a.sessione, stato, aggiornaBarra),
-              h('span', { class: 'nome' }, nomeCompleto(a)), badge(a.stato),
-              h('span', { class: 'muted piccolo' }, `dal ${dataCompleta(a.sessione.data)}`),
-              h('button', { class: 'btn btn-sm btn-primary azioni-persona', onclick: async () => { if (await dialogoSposta(a, d, true)) aggiorna(); } }, icon('calendario', 16), 'Nuova data'),
-              a.nota ? h('span', { class: 'nota' }, 'Motivo: ', a.nota) : null))))
+      ? h('section', { class: 'card card-avviso', 'data-key': 'riassegna', 'data-firma': firma([daRiassegnare.map((a) => a.id), stato.selezione]) },
+          h('h2', { class: 'riga' }, icon('esclamativo', 18), `Da riassegnare · ${daRiassegnare.length}`),
+          h('ul', { class: 'persone' }, daRiassegnare.map((a) => rigaPersona(a, a.sessione, d, stato, aggiornaBarra, aggiorna,
+            h('span', { class: 'muted piccolo' }, `dal ${dataCompleta(a.sessione.data).slice(0, 5)}`)))),
+          stato.selezione ? null : h('div', { class: 'azioni-card' }, daRiassegnare.map((a) =>
+            h('button', { class: 'btn btn-tinted btn-sm', type: 'button', onclick: async () => { if (await dialogoSposta(a, d, true)) aggiorna(); } },
+              icon('calendario', 16), `Nuova data per ${a.nome}`))))
+      : null,
+
+    d.sessioni.length
+      ? h('div', { class: 'tabs tabs-piene', role: 'tablist', 'aria-label': 'Sessioni' },
+          scheda('prossime', `Prossime · ${future.length}`), scheda('passate', `Passate · ${passate.length}`))
       : null,
 
     d.sessioni.length === 0
-      ? vuoto('Nessuna sessione', 'Crea le sessioni con "Nuove sessioni": ti suggerisco i giorni con questa materia.')
-      : h('div', { class: 'stack' },
-          future.map((s, i) => cardGestione(s, d, aggiorna, i === 0, false, stato, aggiornaBarra, vista)),
-          passate.length
-            ? dettagli(`staff-passate-${d.materia.slug}`, false,
-                h('span', { class: 'btn btn-ghost btn-sm' }, icon('orologio', 16), `Sessioni passate (${passate.length})`),
-                h('div', { class: 'stack', style: 'margin-top:.75rem' }, passate.map((s) => cardGestione(s, d, aggiorna, false, true, stato, aggiornaBarra, vista))))
-            : null),
+      ? vuoto('Nessuna sessione', 'Tocca "Nuove sessioni": ti mostro i giorni in cui c\'è questa materia.', 'calendario')
+      : lista.length
+        ? h('div', { class: 'stack' }, lista.map((s, i) => cardGestione(s, d, aggiorna, stato.scheda === 'prossime' && i === 0, stato.scheda === 'passate', stato, aggiornaBarra, vista)))
+        : vuoto(stato.scheda === 'passate' ? 'Nessuna sessione passata' : 'Nessuna sessione in programma', null, 'calendario'),
 
     sessione.isAdmin ? sezioneEsclusi(d, aggiorna) : null);
 }
@@ -451,78 +552,59 @@ function cardGestione(s, d, aggiorna, prossima, passata, stato, aggiornaBarra, v
   const estraibili = Math.min(liberi, d.pool.length);
   const inRiordino = stato.riordino === s.id;
   const ridisegna = () => vista.ridisegna();
+  const pieno = Math.min(100, Math.round((s.assegnazioni.length / s.max_interrogati) * 100));
 
   let elenco;
-  if (inRiordino) {
-    elenco = listaRiordino(s, stato);
-  } else if (s.assegnazioni.length) {
-    elenco = h('ul', { class: 'persone' }, s.assegnazioni.map((a) =>
-      h('li', { class: `persona ${stato.sel.has(a.id) ? 'selezionata' : ''}`, 'data-key': `a-${a.id}`, 'data-firma': firma([a.stato, a.nota, a.volontario]) },
-        casella(a, s, stato, aggiornaBarra),
-        h('span', { class: 'nome' }, nomeCompleto(a)),
-        badge(a.stato),
-        a.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null,
-        h('button', {
-          class: 'btn btn-sm azioni-persona', 'aria-label': `Azioni per ${nomeCompleto(a)}`,
-          onclick: async () => { if (await dialogoAzioni(a, s, d)) aggiorna(); },
-        }, icon('menu', 16), 'Gestisci'),
-        a.nota ? h('span', { class: 'nota' }, 'Motivo: ', a.nota) : null)));
-  } else {
-    elenco = h('p', { class: 'muted piccolo', style: 'margin:.75rem 0 0' }, 'Nessuno ancora assegnato.');
-  }
+  if (inRiordino) elenco = listaRiordino(s, stato);
+  else if (s.assegnazioni.length) elenco = h('ul', { class: 'persone' }, s.assegnazioni.map((a) => rigaPersona(a, s, d, stato, aggiornaBarra, aggiorna)));
+  else elenco = h('p', { class: 'vuoto-card' }, passata ? 'Nessun interrogato registrato.' : 'Ancora nessuno: estrai o aggiungi dei volontari.');
 
-  const tuttiSelezionati = s.assegnazioni.length > 0 && s.assegnazioni.every((a) => stato.sel.has(a.id));
-  const azioni = inRiordino
-    ? h('div', { class: 'azioni-card' },
+  const tutti = s.assegnazioni.length > 0 && s.assegnazioni.every((a) => stato.sel.has(a.id));
+  const piede = inRiordino
+    ? h('div', { class: 'piede-card' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => { stato.riordino = null; stato.ordine = null; ridisegna(); } }, 'Annulla'),
         h('button', {
-          class: 'btn btn-primary btn-sm',
-          onclick: async () => {
-            if (await esegui(() => api.riordina(s.id, stato.ordine), 'Ordine salvato')) { stato.riordino = null; stato.ordine = null; aggiorna(); }
-          },
-        }, icon('check', 16), 'Salva ordine'),
-        h('button', { class: 'btn btn-sm btn-ghost', onclick: () => { stato.riordino = null; stato.ordine = null; ridisegna(); } }, 'Annulla'))
-    : h('div', { class: 'azioni-card' },
-        liberi > 0
-          ? h('button', {
-              class: 'btn btn-primary btn-sm', disabled: estraibili === 0,
-              title: estraibili === 0 ? 'Nessuno studente disponibile nel sorteggio' : null,
-              onclick: () => avviaEstrazione(s, d, estraibili, aggiorna),
-            }, icon('dado', 16), `Estrai ${estraibili || ''}`.trim())
-          : h('span', { class: 'tag' }, icon('check', 14), 'Sessione al completo'),
-        h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoAggiungi(s, d)) aggiorna(); } }, icon('mano', 16), 'Volontari / aggiungi'),
-        s.assegnazioni.length
-          ? h('button', {
-              class: 'btn btn-sm',
-              onclick: () => {
-                for (const a of s.assegnazioni) { if (tuttiSelezionati) stato.sel.delete(a.id); else stato.sel.set(a.id, { a, s }); }
-                ridisegna();
-              },
-            }, icon('seleziona', 16), tuttiSelezionati ? 'Deseleziona tutti' : 'Seleziona tutti')
-          : null,
-        s.assegnazioni.length > 1
-          ? h('button', { class: 'btn btn-sm', onclick: () => { stato.riordino = s.id; stato.ordine = s.assegnazioni.map((a) => a.id); ridisegna(); } }, icon('ordina', 16), 'Ordina')
-          : null,
-        s.assegnazioni.some((a) => a.stato === 'assegnato' || a.stato === 'interrogato')
-          ? h('button', { class: 'btn btn-sm', onclick: async () => { if (await dialogoCopia(s, d)) aggiorna(); } }, icon('sposta', 16), 'Copia in altra materia')
-          : null,
-        s.ultima_estrazione ? h('button', { class: 'btn btn-sm btn-ghost', onclick: async () => { if (await annullaEstrazione(s)) aggiorna(); } }, icon('annulla', 16), 'Annulla ultima estrazione') : null);
+          class: 'btn btn-primary', type: 'button', style: 'flex:1',
+          onclick: async () => { if (await esegui(() => api.riordina(s.id, stato.ordine), 'Ordine salvato')) { stato.riordino = null; stato.ordine = null; aggiorna(); } },
+        }, icon('check', 18), 'Salva ordine'))
+    : stato.selezione
+      ? (s.assegnazioni.length
+          ? h('div', { class: 'piede-card' }, h('button', {
+              class: 'btn btn-tinted btn-sm', type: 'button',
+              onclick: () => { for (const a of s.assegnazioni) { if (tutti) stato.sel.delete(a.id); else stato.sel.set(a.id, { a, s }); } ridisegna(); aggiornaBarra(); },
+            }, icon('seleziona', 16), tutti ? 'Deseleziona tutti' : 'Seleziona tutti'))
+          : null)
+      : h('div', { class: 'piede-card' },
+          liberi > 0 && !passata
+            ? h('button', {
+                class: 'btn btn-primary', type: 'button', style: 'flex:1', disabled: estraibili === 0,
+                title: estraibili === 0 ? 'Nessuno studente disponibile nel sorteggio' : null,
+                onclick: () => avviaEstrazione(s, d, estraibili, aggiorna),
+              }, icon('dado', 18), estraibili ? `Estrai ${estraibili}` : 'Nessuno da estrarre')
+            : h('span', { class: 'stato-sessione' }, icon('check', 16), passata ? 'Sessione passata' : 'Al completo'),
+          h('button', {
+            class: 'btn btn-altro', type: 'button', 'aria-label': `Altre azioni per la sessione del ${dataCompleta(s.data)}`,
+            onclick: () => azioniSessione(s, d, stato, aggiorna, ridisegna),
+          }, icon('menu', 20)));
 
   return h('article', {
-    class: `card ${prossima ? 'prossima' : ''} ${passata ? 'passata' : ''}`,
-    'data-key': `s-${s.id}`, 'data-firma': firma([s.data, s.argomento, s.max_interrogati, s.assegnazioni]),
+    class: `card card-sessione ${prossima ? 'prossima' : ''} ${passata ? 'passata' : ''}`,
+    'data-key': `s-${s.id}`, 'data-firma': firma([s.data, s.ora, s.prof, s.argomento, s.max_interrogati, s.assegnazioni, stato.selezione]),
   },
     h('div', { class: 'card-head' },
       h('div', { class: 'data-blocco', 'aria-hidden': 'true' },
         h('span', { class: 'giorno' }, giornoNumero(s.data)), h('span', { class: 'mese' }, meseBreve(s.data))),
       h('div', { style: 'flex:1;min-width:0' },
-        h('h3', {}, dataTitolo(s.data)),
+        h('div', { class: 'riga' }, h('h3', {}, dataTitolo(s.data)), prossima ? h('span', { class: 'tag accent' }, 'Prossima') : null),
         descriviOraProf(s) ? h('p', { class: 'ora-prof' }, icon('orologio', 14), descriviOraProf(s)) : null,
-        s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null,
-        h('p', { class: 'posti' }, inRiordino ? 'Trascina o usa le frecce per scegliere chi va per primo' : `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati`)),
-      h('button', { class: 'btn-icon sm', 'aria-label': `Modifica sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await dialogoSessione(s, d)) aggiorna(); } }, icon('matita', 18)),
-      h('button', { class: 'btn-icon sm', 'aria-label': `Elimina sessione del ${dataCompleta(s.data)}`, onclick: async () => { if (await eliminaSessione(s)) aggiorna(); } }, icon('cestino', 18))),
+        s.argomento ? h('p', { class: 'meta' }, testoConLink(s.argomento)) : null)),
+    inRiordino
+      ? h('p', { class: 'suggerimento' }, icon('ordina', 16), 'Trascina dalla maniglia o usa le frecce.')
+      : h('div', { class: 'progresso', role: 'img', 'aria-label': `${s.assegnazioni.length} di ${s.max_interrogati} posti occupati` },
+          h('div', { class: 'progresso-barra' }, h('span', { style: `width:${pieno}%` })),
+          h('span', { class: 'progresso-testo' }, `${s.assegnazioni.length}/${s.max_interrogati}`)),
     elenco,
-    azioni);
+    piede);
 }
 
 /** Elenco in modalità "Ordina": maniglia per trascinare + frecce su/giù. */
@@ -625,40 +707,6 @@ async function annullaEstrazione(s) {
   });
   if (!r) return false;
   return !!(await esegui(() => api.annullaEstrazione(s.id, r.motivo), 'Estrazione annullata'));
-}
-
-async function dialogoAzioni(a, s, d) {
-  return dialogo(nomeCompleto(a), (chiudi) => {
-    const motivo = h('textarea', { rows: 2, maxlength: 200, placeholder: 'Facoltativo (es. "malato", "gita")' });
-    const azioneStato = (stato) => h('button', {
-      class: 'btn', type: 'button', disabled: a.stato === stato,
-      onclick: async () => {
-        const ok = await esegui(() => api.stato(a.id, stato, motivo.value.trim()), `${nomeCompleto(a)}: ${STATI[stato].testo.toLowerCase()}`);
-        if (ok) chiudi(true);
-      },
-    }, icon(STATI[stato].icona, 18), stato === 'assegnato' ? 'Riporta ad assegnato' : STATI[stato].testo);
-
-    return h('div', {},
-      h('p', { class: 'riga' }, 'Stato attuale: ', badge(a.stato), h('span', { class: 'muted piccolo' }, `· ${dataLunga(s.data)}`)),
-      campo('Motivo', motivo, 'Viene mostrato ai compagni nel registro modifiche.'),
-      h('div', { class: 'scelte' },
-        azioneStato('interrogato'), azioneStato('assente'), azioneStato('rimandato'), azioneStato('assegnato'),
-        h('button', {
-          class: 'btn', type: 'button',
-          onclick: async () => { chiudi(null); await dialogoSposta(a, d, false, motivo.value.trim(), s.id); },
-        }, icon('sposta', 18), 'Sposta ad altra data'),
-        h('button', {
-          class: 'btn', type: 'button', style: 'color:var(--danger)',
-          onclick: async () => {
-            const r = await conferma({
-              titolo: `Rimuovere ${nomeCompleto(a)}?`,
-              messaggio: 'Verrà tolto da questa sessione e tornerà nel sorteggio della materia.',
-              ok: 'Rimuovi', pericolo: true,
-            });
-            if (r && await esegui(() => api.rimuovi(a.id, motivo.value.trim()), 'Rimosso dalla sessione')) chiudi(true);
-          },
-        }, icon('cestino', 18), 'Rimuovi dalla sessione')));
-  });
 }
 
 async function dialogoSposta(a, d, riassegna, motivoIniziale = '', idCorrente = null) {
@@ -876,89 +924,162 @@ async function eliminaSessione(s) {
   return !!(await esegui(() => api.eliminaSessione(s.id, r.motivo), 'Sessione eliminata'));
 }
 
+/** Etichetta della settimana: "Questa settimana", "Prossima settimana", "24–29 nov". */
+function etichettaSettimana(lunedi, lunediOggi) {
+  const diff = Math.round((new Date(lunedi + 'T12:00:00Z') - new Date(lunediOggi + 'T12:00:00Z')) / (7 * 86400000));
+  if (diff === 0) return 'Questa settimana';
+  if (diff === 1) return 'Prossima settimana';
+  const sab = new Date(lunedi + 'T12:00:00Z'); sab.setUTCDate(sab.getUTCDate() + 5);
+  const fmt = (x) => new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(x).replace('.', '');
+  return `${fmt(new Date(lunedi + 'T12:00:00Z'))} – ${fmt(sab)}`;
+}
+function lunediDi(iso) {
+  const x = new Date(iso + 'T12:00:00Z');
+  const g = x.getUTCDay() || 7;
+  x.setUTCDate(x.getUTCDate() - (g - 1));
+  return x.toISOString().slice(0, 10);
+}
+
+/**
+ * Nuove sessioni: calendario a chip delle prossime settimane.
+ * Ogni chip è un'ora utile (ora della materia; con l'interruttore, anche le
+ * ore di un prof che insegna la materia). Si toccano i chip, si sceglie il
+ * numero di interrogati e si crea tutto insieme.
+ */
 async function dialogoNuoveSessioni(d) {
   const orario = d.orario;
   const occupate = new Set(d.sessioni.map((s) => `${s.data}|${s.ora ?? ''}`));
-  const suggeriti = giorniSuggeriti(orario, d.materia.id, { occupate });
-  return dialogo(`Nuove sessioni · ${d.materia.nome}`, (chiudi) => {
-    const righe = h('div', { class: 'stack' });
-    const vuote = h('p', { class: 'muted piccolo' }, suggeriti.length
-      ? 'Spunta uno o più giorni qui sopra, oppure inserisci una data manualmente.'
-      : 'Nessuna sessione ancora: inserisci una data con il pulsante qui sotto.');
-    const aggiornaVuote = () => { vuote.hidden = righe.children.length > 0; };
+  const tutti = giorniSuggeriti(orario, d.materia.id, { occupate, settimane: 5 });
+  const haProf = tutti.some((x) => x.tramiteProf);
+  const scelte = new Map();          // chiave "data|ora" → { data, ora, teacher_id }
+  const manuali = [];                // date aggiunte a mano
 
-    const aggiungiRiga = (valori = {}) => {
-      const data = h('input', { type: 'date', required: true, value: valori.data || '', 'aria-label': 'Data' });
-      const ora = selectOra(orario, valori.ora);
-      const prof = selectProf(orario, d.materia.id, valori.teacher_id);
-      const arg = h('input', { maxlength: 200, placeholder: 'Argomento (facoltativo)', 'aria-label': 'Argomento' });
-      const max = h('input', { type: 'number', min: 1, max: 40, required: true, value: String(valori.max || 3), 'aria-label': 'Numero di interrogati' });
-      const riga = h('div', { class: 'riga-sessione' },
-        h('div', { class: 'riga' },
-          h('div', { style: 'flex:1;min-width:150px' }, data),
-          h('label', { class: 'campo-mini' }, h('span', {}, 'Interrogati'), max),
-          h('button', { class: 'btn-icon sm', type: 'button', 'aria-label': 'Rimuovi riga', onclick: () => { riga.remove(); valori.onRimuovi?.(); aggiornaVuote(); } }, icon('x', 18))),
-        h('div', { class: 'due-colonne' }, ora, prof),
-        arg);
-      riga._valori = () => ({
-        data: data.value, argomento: arg.value.trim(), max_interrogati: Number(max.value),
-        ora: ora.value ? Number(ora.value) : null, teacher_id: prof.value ? Number(prof.value) : null,
-      });
-      righe.append(riga);
-      aggiornaVuote();
-      if (!valori.data) data.focus();
-      return riga;
+  const profPer = (x) => {
+    const p = orario.prof.find((t) => t.id === x.teacher_id);
+    if (p?.materie.includes(d.materia.id)) return p.id;
+    const chi = orario.prof.filter((t) => t.materie.includes(d.materia.id));
+    return chi.length === 1 ? chi[0].id : null;
+  };
+
+  return dialogo(`Nuove sessioni`, (chiudi) => {
+    let mostraProf = false;
+    const calendario = h('div', { class: 'calendario' });
+    const contatore = h('strong', {});
+    const crea = h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea');
+    const st = stepper(3, { min: 1, max: 40, etichetta: 'Interrogati per sessione' });
+    const argomento = h('input', { maxlength: 200, placeholder: 'Argomento (facoltativo)', 'aria-label': 'Argomento' });
+
+    const aggiornaRiepilogo = () => {
+      const n = scelte.size;
+      contatore.textContent = n ? `${n} ${n === 1 ? 'data scelta' : 'date scelte'}` : 'Nessuna data scelta';
+      crea.disabled = !n;
+      crea.textContent = n > 1 ? `Crea ${n} sessioni` : 'Crea sessione';
     };
 
-    // Giorni suggeriti dall'orario.
-    let blocco;
-    if (!orario.slot.length) {
-      blocco = h('div', { class: 'avviso-orario' }, icon('info', 18),
-        h('span', {}, sessione.isAdmin
-          ? h('span', {}, 'Imposta l\'orario della classe per vedere qui i giorni con questa materia. ', h('a', { href: '#/staff/orario' }, 'Vai all\'orario'))
-          : 'Quando l\'admin imposterà l\'orario, qui vedrai i giorni con questa materia.'));
-    } else if (!suggeriti.length) {
-      blocco = h('div', { class: 'avviso-orario' }, icon('info', 18),
-        h('span', {}, `Nell'orario non ci sono ore di ${d.materia.nome} né prof che la insegnano. Aggiungi una data a mano.`));
-    } else {
-      blocco = h('div', {},
-        h('h3', { class: 'sottotitolo-sezione' }, `Giorni con ${d.materia.nome}`),
-        h('ul', { class: 'lista-giorni' }, suggeriti.map((x) => {
-          const cb = h('input', { type: 'checkbox', disabled: x.occupata });
-          let riga = null;
-          cb.addEventListener('change', () => {
-            if (cb.checked) {
-              const tProf = orario.prof.find((p) => p.id === x.teacher_id);
-              riga = aggiungiRiga({ data: x.data, ora: x.ora, teacher_id: tProf?.materie.includes(d.materia.id) ? x.teacher_id : '', onRimuovi: () => { cb.checked = false; riga = null; } });
-            } else { riga?.remove(); riga = null; aggiornaVuote(); }
-          });
-          return h('li', {},
-            h('label', { class: `giorno-suggerito ${x.occupata ? 'occupato' : ''}` },
-              cb,
-              h('span', { class: 'gs-data' }, h('strong', {}, `${GIORNI_BREVI[x.giorno]} ${dataCompleta(x.data).slice(0, 5)}`), h('small', {}, `${x.ora}ª ora`)),
-              h('span', { class: 'gs-info' },
-                h('span', {}, x.tramiteProf ? `Ora di ${x.materiaOra}` : x.materiaOra, x.prof ? ` · ${x.prof}` : ''),
-                h('small', {}, x.occupata ? 'Già fissata' : x.tramiteProf ? `${x.prof} insegna anche ${d.materia.nome}` : `${x.inizio}–${x.fine}`))));
-        })));
+    const chip = (x) => {
+      const k = `${x.data}|${x.ora}`;
+      const b = h('button', {
+        type: 'button', class: `chip-ora ${x.tramiteProf ? 'via-prof' : ''}`, disabled: x.occupata,
+        'aria-pressed': String(scelte.has(k)),
+        'aria-label': `${GIORNI[x.giorno]} ${dataCompleta(x.data)}, ${x.ora}ª ora${x.tramiteProf ? `, ora di ${x.materiaOra} con ${x.prof}` : ''}${x.occupata ? ', già fissata' : ''}`,
+        onclick: () => {
+          if (scelte.has(k)) scelte.delete(k); else scelte.set(k, { data: x.data, ora: x.ora, teacher_id: profPer(x) });
+          b.setAttribute('aria-pressed', String(scelte.has(k)));
+          aggiornaRiepilogo();
+        },
+      },
+        h('span', { class: 'co-ora' }, `${x.ora}ª`),
+        h('span', { class: 'co-info' }, x.occupata ? 'già fissata' : x.tramiteProf ? `${x.materiaOra.slice(0, 12)} · ${x.prof}` : x.inizio || ''));
+      return b;
+    };
+
+    const disegnaCalendario = () => {
+      const visibili = tutti.filter((x) => mostraProf || !x.tramiteProf);
+      const settimane = new Map();
+      for (const x of visibili) {
+        const lun = lunediDi(x.data);
+        if (!settimane.has(lun)) settimane.set(lun, new Map());
+        const giorni = settimane.get(lun);
+        if (!giorni.has(x.data)) giorni.set(x.data, []);
+        giorni.get(x.data).push(x);
+      }
+      const lunOggi = lunediDi(oggiRoma());
+      calendario.replaceChildren(...[...settimane].map(([lun, giorni]) =>
+        h('section', { class: 'settimana' },
+          h('h3', { class: 'sottotitolo-sezione' }, etichettaSettimana(lun, lunOggi)),
+          h('ul', { class: 'giorni-cal' }, [...giorni].map(([data, ore]) =>
+            h('li', { class: 'giorno-cal' },
+              h('div', { class: 'gc-data' },
+                h('span', { class: 'gc-giorno' }, GIORNI_BREVI[ore[0].giorno]),
+                h('span', { class: 'gc-num' }, giornoNumero(data)),
+                h('span', { class: 'gc-mese' }, meseBreve(data))),
+              h('div', { class: 'gc-chip' }, ore.map(chip))))))));
+      if (!settimane.size) {
+        calendario.replaceChildren(h('div', { class: 'avviso-orario' }, icon('info', 18), h('span', {},
+          !orario.slot.length
+            ? (sessione.isAdmin ? ['Imposta l\'orario per vedere qui i giorni con questa materia. ', h('a', { href: '#/staff/orario' }, 'Vai all\'orario')] : 'Quando l\'admin imposterà l\'orario, qui vedrai i giorni con questa materia.')
+            : `Nell'orario non ci sono ore di ${d.materia.nome}${haProf ? ' (attiva l\'interruttore per le ore dei suoi prof)' : ''}. Puoi scegliere una data qui sotto.`)));
+      }
+    };
+
+    // Interruttore: ore di altre materie con un prof che insegna anche questa.
+    const sw = h('input', { type: 'checkbox', role: 'switch', class: 'switch' });
+    sw.addEventListener('change', () => { mostraProf = sw.checked; disegnaCalendario(); });
+
+    // Data a mano.
+    const dataMano = h('input', { type: 'date', 'aria-label': 'Data', min: oggiRoma() });
+    const oraMano = selectOra(orario, '');
+    const altre = h('div', { class: 'chip-manuali' });
+    const pannelloMano = h('div', { class: 'pannello-mano', hidden: true },
+      h('div', { class: 'due-colonne' }, dataMano, oraMano),
+      h('button', {
+        class: 'btn btn-tinted btn-sm', type: 'button',
+        onclick: () => {
+          if (!dataMano.value) { dataMano.focus(); return; }
+          const ora = oraMano.value ? Number(oraMano.value) : null;
+          const k = `${dataMano.value}|${ora ?? ''}`;
+          if (!scelte.has(k)) {
+            const chi = orario.prof.filter((t) => t.materie.includes(d.materia.id));
+            scelte.set(k, { data: dataMano.value, ora, teacher_id: chi.length === 1 ? chi[0].id : null });
+            manuali.push(k);
+            const b = h('button', { type: 'button', class: 'chip-ora', 'aria-pressed': 'true' },
+              h('span', { class: 'co-ora' }, `${GIORNI_BREVI[giornoSettimana(dataMano.value)] || ''} ${dataCompleta(dataMano.value).slice(0, 5)}`),
+              h('span', { class: 'co-info' }, ora ? `${ora}ª ora` : 'senza ora'));
+            b.addEventListener('click', () => { scelte.delete(k); b.remove(); aggiornaRiepilogo(); });
+            altre.append(b);
+            aggiornaRiepilogo();
           }
+          dataMano.value = '';
+        },
+      }, icon('piu', 16), 'Aggiungi'));
+
+    disegnaCalendario();
+    aggiornaRiepilogo();
 
     return h('form', {
+      class: 'form-sessioni',
       onsubmit: async (e) => {
         e.preventDefault();
-        const sessioni = [...righe.children].map((r) => r._valori());
-        if (!sessioni.length) { toast('Scegli almeno un giorno', 'errore'); return; }
+        if (!scelte.size) return;
+        const sessioni = [...scelte.values()].sort((a, b) => (a.data + (a.ora || 0)).localeCompare(b.data + (b.ora || 0)))
+          .map((x) => ({ ...x, argomento: argomento.value.trim(), max_interrogati: st.valore() }));
         const r = await esegui(() => api.nuoveSessioni(d.materia.id, sessioni), sessioni.length === 1 ? 'Sessione creata' : `${sessioni.length} sessioni create`);
         if (r) chiudi(true);
       },
     },
-      blocco,
-      h('h3', { class: 'sottotitolo-sezione' }, 'Sessioni da creare'),
-      vuote,
-      righe,
-      h('button', { class: 'btn btn-tinted btn-sm', type: 'button', style: 'margin-top:.75rem', onclick: () => aggiungiRiga({}) }, icon('piu', 16), 'Aggiungi una data a mano'),
-      h('div', { class: 'azioni' },
-        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => chiudi(null) }, 'Annulla'),
-        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Crea sessioni')));
+      h('p', { class: 'muted piccolo', style: 'margin-top:0' }, `Tocca i giorni in cui interrogare in ${d.materia.nome}.`),
+      haProf
+        ? h('label', { class: 'riga-switch' },
+            h('span', {}, h('strong', {}, 'Anche le ore dei suoi prof'), h('small', {}, `Ore di altre materie con un prof che insegna ${d.materia.nome}`)),
+            sw)
+        : null,
+      calendario,
+      h('button', { class: 'btn btn-ghost btn-sm', type: 'button', style: 'margin-top:.5rem', onclick: (e) => { pannelloMano.hidden = !pannelloMano.hidden; e.currentTarget.remove(); dataMano.focus(); } }, icon('calendario', 16), 'Scegli un\'altra data'),
+      pannelloMano, altre,
+      h('div', { class: 'riepilogo-sessioni' },
+        h('div', { class: 'rs-riga' }, h('span', {}, 'Interrogati per sessione'), st.el),
+        argomento,
+        h('div', { class: 'azioni' }, contatore, h('span', { class: 'spazio' }), crea)));
   }, { larghezza: 'larga' });
 }
 
