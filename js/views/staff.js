@@ -1343,6 +1343,9 @@ function dataOraBreve(ts) {
 //  Orario e prof (solo admin)
 // ---------------------------------------------------------------------
 
+/** Ore di lezione della 5C (con gli intervalli dopo la 3ª e la 5ª ora). */
+const ORE_5C = [['08:00', '08:55'], ['08:55', '09:50'], ['09:50', '10:45'], ['11:00', '11:55'], ['11:55', '12:50'], ['13:05', '13:55'], ['13:55', '14:50']];
+
 function aggiungiMinuti(hhmm, min) {
   const [hh, mm] = hhmm.split(':').map(Number);
   const t = Math.min(23 * 60 + 59, hh * 60 + mm + min);
@@ -1378,7 +1381,10 @@ export function staffOrario(_params, query) {
   async function carica(forza = false) {
     if (modificato && !forza) return; // non perdere le modifiche in corso
     try {
-      orario = await api.orario();
+      const nuovo = await api.orario();
+      // Se nel frattempo l'admin ha modificato qualcosa, non sovrascrivere.
+      if (modificato && !forza) return;
+      orario = nuovo;
       bozza = {
         ore: orario.ore.map((o) => ({ ...o })),
         slot: new Map(orario.slot.map((x) => [`${x.giorno}|${x.ora}`, { ...x }])),
@@ -1428,10 +1434,10 @@ export function staffOrario(_params, query) {
           ? h('button', {
               class: 'btn btn-sm', type: 'button',
               onclick: () => {
-                bozza.ore = Array.from({ length: 6 }, (_, i) => ({ ora: i + 1, inizio: aggiungiMinuti('08:00', i * 60), fine: aggiungiMinuti('08:00', (i + 1) * 60) }));
+                bozza.ore = ORE_5C.map(([inizio, fine], i) => ({ ora: i + 1, inizio, fine }));
                 segnaModificato(); disegna();
               },
-            }, 'Usa 6 ore da 60 minuti (8:00–14:00)')
+            }, 'Usa l\'orario della 5C (8:00–14:50)')
           : null));
   }
 
