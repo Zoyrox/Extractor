@@ -8,7 +8,7 @@
 //   realtime si vedrebbero per un attimo i dati vecchi.
 // - Scritture, login e chiamate dello staff: mai in cache.
 
-const VERSIONE = 'v1.4.0';
+const VERSIONE = 'v2.0.0';
 const CACHE_SHELL = `shell-${VERSIONE}`;
 const CACHE_CDN = 'cdn-v1';
 const CACHE_DATI = 'dati-v1';
@@ -22,6 +22,8 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
+  './fonts/plus-jakarta-sans-latin-wght-normal.woff2',
+  './fonts/plus-jakarta-sans-latin-ext-wght-normal.woff2',
   './js/app.js',
   './js/api.js',
   './js/config.js',

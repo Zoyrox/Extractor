@@ -71,10 +71,19 @@ function dopoCambioRotta(path) {
     : path.startsWith('/registro') ? 'registro'
     : path.startsWith('/cerca') ? 'cerca'
     : path.startsWith('/accesso') ? '' : 'home';
-  document.querySelectorAll('[data-nav]').forEach((a) => {
+  const voci = [...document.querySelectorAll('[data-nav]')];
+  voci.forEach((a) => {
     if (a.dataset.nav === sezione) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
+  // Indicatore del dock: scivola sotto la scheda attiva.
+  const nav = document.querySelector('.app-nav');
+  const idx = voci.findIndex((a) => a.dataset.nav === sezione);
+  nav.dataset.idx = String(idx);
+  nav.style.setProperty('--idx', String(Math.max(0, idx)));
+  // Transizione di pagina.
+  const v = view();
+  v.classList.remove('vista-entra'); void v.offsetWidth; v.classList.add('vista-entra');
   if (!primaNavigazione) {
     window.scrollTo(0, 0);
     // Accessibilità: sposta il focus sul contenuto alla navigazione.
@@ -88,9 +97,13 @@ function dopoCambioRotta(path) {
 // ---------------------------------------------------------------------
 
 async function avvio() {
-  document.querySelectorAll('[data-icon]').forEach((el) => el.replaceWith(icon(el.dataset.icon, 22)));
+  document.querySelectorAll('[data-icon]').forEach((el) => el.replaceWith(icon(el.dataset.icon, 24)));
   applicaTema();
   document.getElementById('btn-tema').addEventListener('click', cambiaTema);
+  // Header in vetro quando si scorre la pagina.
+  const suScroll = () => document.body.classList.toggle('scorrendo', window.scrollY > 8);
+  window.addEventListener('scroll', suScroll, { passive: true });
+  suScroll();
   avviaPwa();
 
   if (!sb) {

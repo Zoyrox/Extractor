@@ -30,6 +30,7 @@ js/views/public.js         home, materia, registro, "il mio nome", accesso
 js/views/staff.js          area staff (estrazioni, imprevisti, elenco, utenti, codice)
 sw.js                      service worker (cache shell + dati offline)
 manifest.json, icons/      PWA (icone 192/512, maskable, Apple)
+fonts/                     Plus Jakarta Sans (licenza SIL OFL, vedi fonts/OFL.txt), servito in locale
 robots.txt, .nojekyll      non indicizzabile; Pages senza Jekyll
 supabase/migrations/*.sql  schema (applicato dall'integrazione GitHub di Supabase)
 supabase/schema.sql        tutte le migrazioni in un unico file, da incollare a mano nello SQL Editor

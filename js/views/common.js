@@ -38,7 +38,13 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3, inPau
       if (inPausa() && !primo) { inCorso = false; setTimeout(() => aggiorna(motivo), 400); return; }
       ultimiDati = dati;
       const nodo = disegna(dati);
-      container.classList.add('in-aggiornamento');
+      if (primo) {
+        // Primo caricamento: entrata a cascata degli elementi.
+        container.classList.add('primo');
+        setTimeout(() => container.classList.remove('primo'), 1200);
+      } else {
+        container.classList.add('in-aggiornamento');
+      }
       mount(container, nodo);
       requestAnimationFrame(() => container.classList.remove('in-aggiornamento'));
       const nuove = new Map();

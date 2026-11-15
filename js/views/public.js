@@ -114,7 +114,7 @@ export function home() {
       if (!d.materie.length) {
         return vuoto('Nessuna materia', 'L\'amministratore non ha ancora creato le materie.', 'libro');
       }
-      return h('div', {}, cardMieDate(d.mie), cardProssima(d.materie), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
+      return h('div', {}, cardProssima(d.materie), cardMieDate(d.mie), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
     },
   });
 }
