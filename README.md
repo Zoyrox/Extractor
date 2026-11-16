@@ -25,9 +25,11 @@ js/prefs.js                preferenze in localStorage (tema, codice, nome)
 js/draw.js                 animazione dell'estrazione
 js/export.js               esportazione PNG (canvas) e PDF (jsPDF)
 js/pwa.js                  service worker, "nuova versione", installa app
+js/tema.js                 tema chiaro/scuro, colore barra di stato, cambio a cerchio
 js/views/common.js         caricamento, errori, evidenziazione delle modifiche
-js/views/public.js         home, materia, registro, "il mio nome", accesso
-js/views/staff.js          area staff (estrazioni, imprevisti, elenco, utenti, codice)
+js/views/dashboard.js      home personale, agenda, profilo/gestione
+js/views/public.js         materia (compagni), registro, cerca, accesso
+js/views/staff.js          strumenti staff dentro le pagine (estrazioni, imprevisti, elenco, utenti, codice)
 sw.js                      service worker (cache shell + dati offline)
 manifest.json, icons/      PWA (icone 192/512, maskable, Apple)
 fonts/                     Plus Jakarta Sans (licenza SIL OFL, vedi fonts/OFL.txt), servito in locale
@@ -175,12 +177,20 @@ Per attivarla: GitHub → **Settings → Secrets and variables → Actions** →
 
 ## Come si usa
 
-1. **Admin**: *Staff → Elenco studenti → Carica JSON*. Formato `[{"nome":"Mario","cognome":"Rossi"}, …]`; per provare c'è `dati-esempio.json`. Prima di applicare vedi l'anteprima (aggiunti, modificati o riattivati, disattivati).
-2. **Admin**: *Staff → Orario e prof*:
+**Struttura dell'app** (barra in basso sul telefono, barra laterale sul computer):
+- **Home**: il pannello colorato dice quando tocca a te ("Tocca a te tra 4 giorni") con materia, giorno, ora e la tua posizione nell'ordine. Sotto: *Questa settimana in classe* (tocca un giorno per aprirlo in Agenda), *Da estrarre* (solo staff) e le materie.
+- **Agenda**: tutte le materie insieme, giorno per giorno, con filtri per materia, *Solo le mie* e *Passate*.
+- **Registro**: tutte le modifiche.
+- **Profilo** (per lo staff si chiama **Gestione**): il tuo nome (salvato solo sul dispositivo), tema *Sistema / Chiaro / Scuro*, installa app, esci. Per lo staff: materie, orario e prof, studenti, utenti, codice, cestino, backup.
+- La **pagina di una materia** è unica: i compagni la vedono in sola lettura, lo staff ci trova anche *Nuove sessioni*, *Estrai*, il menu ⋯ e il tocco sulle persone. I vecchi link `#/staff/materia/...` funzionano ancora.
+
+
+1. **Admin**: *Gestione → Elenco studenti → Carica JSON*. Formato `[{"nome":"Mario","cognome":"Rossi"}, …]`; per provare c'è `dati-esempio.json`. Prima di applicare vedi l'anteprima (aggiunti, modificati o riattivati, disattivati).
+2. **Admin**: *Gestione → Orario e prof*:
    - **Ore**: le ore di lezione con orario di inizio e fine (c'è il pulsante "6 ore da 60 minuti" per partire).
    - **Prof**: ogni prof con le materie che **può interrogare**. Esempio: la prof di Italiano che può interrogare anche in Storia ha spuntate entrambe.
    - **Orario**: giorno per giorno, materia e prof di ogni ora.
-3. **Admin o rappresentanti**: *Nuova materia* (admin) → *Sessioni ed estrazioni* → *Nuove sessioni*. Si apre un **calendario a chip** delle prossime settimane con i giorni in cui c'è quella materia: tocchi i chip delle ore che vuoi, scegli il numero di interrogati con lo stepper − 3 + e premi *Crea*. Ora e prof si compilano da soli. L'interruttore *Anche le ore dei suoi prof* mostra (tratteggiate) le ore di altre materie tenute da un prof che insegna anche questa, ad esempio l'ora di Italiano della prof che fa anche Storia. *Scegli un'altra data* serve per i giorni fuori orario. Ora e prof sono visibili ai compagni (es. "3ª ora · 10:00–11:00 · Prof.ssa Rossi").
+3. **Admin o rappresentanti**: *Gestione → Materie → Nuova* (admin) → apri la materia → *Nuove sessioni*. Si apre un **calendario a chip** delle prossime settimane con i giorni in cui c'è quella materia: tocchi i chip delle ore che vuoi, scegli il numero di interrogati con lo stepper − 3 + e premi *Crea*. Ora e prof si compilano da soli. L'interruttore *Anche le ore dei suoi prof* mostra (tratteggiate) le ore di altre materie tenute da un prof che insegna anche questa, ad esempio l'ora di Italiano della prof che fa anche Storia. *Scegli un'altra data* serve per i giorni fuori orario. Ora e prof sono visibili ai compagni (es. "3ª ora · 10:00–11:00 · Prof.ssa Rossi").
 4. Facoltativo: *Volontari / aggiungi* per inserire **più persone insieme**, come volontari o messe a mano per quel giorno. Se i posti non bastano, l'app propone di aumentarli.
 5. In classe, sul proiettore o sul telefono: **Estrai N**. Il server sceglie e salva; la **roulette** (un cilindro di nomi in ordine alfabetico, in cui si vedono i nomi prima e dopo) gira, rallenta a lungo e si ferma sull'estratto, con coriandoli. In alto si sceglie la velocità (*Veloce* ≈3 s, *Normale* ≈6,5 s, *Teatrale* ≈10 s), si attivano o disattivano i suoni e si passa a schermo intero (modalità proiettore, automatica se il browser lo consente). Tutte e tre le scelte vengono ricordate sul dispositivo. Alla fine compare un riepilogo numerato da proiettare o fotografare. *Salta animazione* e *Salta tutto* restano disponibili.
    **Su ogni sessione** c'è il pulsante principale *Estrai*; tutto il resto (volontari, ordine, copia in altra materia, modifica, annulla estrazione, elimina) è nel pulsante **⋯**. **Toccando una persona** si apre il menu delle sue azioni: interrogato, assente, rimandato, sposta, togli.
@@ -189,10 +199,10 @@ Per attivarla: GitHub → **Settings → Secrets and variables → Actions** →
    *Copia in altra materia*: copia gli interrogati di una sessione (es. Italiano del 16/11) in una sessione di un'altra materia, esistente o nuova con la stessa data (la nuova la può creare solo l'admin). Chi è già in elenco in quella materia viene saltato.
 6. Imprevisti: **tocca la persona** → *Interrogato*, *Assente*, *Rimandato* (con motivo), *Sposta ad altra data* o *Rimuovi*. Assenti e rimandati finiscono in **Da riassegnare**, dove si sceglie la nuova data.
 7. *Annulla ultima estrazione* (motivo obbligatorio) riporta nel sorteggio le persone di quell'estrazione.
-8. I compagni vedono tutto subito, con i badge di stato (icona + testo) e il **registro modifiche** (chi, cosa, quando, perché). Chi in *Il mio nome* spunta "Ricorda il mio nome" vede **le proprie date in cima alla home**.
+8. I compagni vedono tutto subito, con i badge di stato (icona + testo) e il **registro modifiche** (chi, cosa, quando, perché). Chi sceglie il proprio nome in *Profilo → Il tuo nome* (o dal pulsante *Dimmi chi sei* in home) vede **in home quando tocca a lui o a lei** e le sue date evidenziate in Agenda.
 9. **Password dimenticata** (staff): dal form di accesso, *Password dimenticata?* → arriva un link via email → si sceglie la nuova password. Serve che l'indirizzo del sito sia tra i *Redirect URLs* di Supabase (punto 4).
 11. **Permessi**: i rappresentanti approvati possono creare, modificare ed eliminare sessioni, estrarre e gestire gli imprevisti. Restano **solo all'admin**: materie (con il loro colore), orario e prof, elenco studenti, esclusi dal sorteggio, codice di classe, approvazione dello staff, **Cestino** (le sessioni eliminate restano 90 giorni e si possono ripristinare con le persone assegnate) e backup.
-10. **Backup** (admin): *Staff → Backup*. Ogni lunedì alle 03:00 UTC il database salva da solo una copia di tutti i dati (le ultime 12, con l'estensione `pg_cron`). *Scarica backup ora* crea e scarica un JSON. Il file contiene i nomi: conservalo in un posto privato, mai nel repository. Il codice di classe non è incluso.
+10. **Backup** (admin): *Gestione → Backup*. Ogni lunedì alle 03:00 UTC il database salva da solo una copia di tutti i dati (le ultime 12, con l'estensione `pg_cron`). *Scarica backup ora* crea e scarica un JSON. Il file contiene i nomi: conservalo in un posto privato, mai nel repository. Il codice di classe non è incluso.
 
 **Pool di estrazione** (per materia): studenti attivi, non già presenti in nessuna sessione della materia (in qualunque stato) e non esclusi a mano.
 

@@ -1,40 +1,16 @@
 // Punto di ingresso: tema, autenticazione, rotte, realtime e PWA.
 
 import { sb, sessione, caricaProfilo, erroreAvvio } from './api.js';
-import { prefs } from './prefs.js';
 import { rotta, avviaRouter, risolvi, vistaCorrente, percorsoCorrente } from './router.js';
 import { avviaRealtime } from './realtime.js';
 import { avviaPwa } from './pwa.js';
 import { h, icon, mount, vuoto, toast } from './ui.js';
 import * as pub from './views/public.js';
 import * as staff from './views/staff.js';
+import * as dash from './views/dashboard.js';
+import { applicaTema, ciclaTema } from './tema.js';
 
 const view = () => document.getElementById('view');
-
-// ---------------------------------------------------------------------
-//  Tema: sistema → chiaro → scuro → sistema
-// ---------------------------------------------------------------------
-
-function applicaTema() {
-  const t = prefs.tema;
-  const root = document.documentElement;
-  if (t === 'chiaro') root.dataset.theme = 'light';
-  else if (t === 'scuro') root.dataset.theme = 'dark';
-  else delete root.dataset.theme;
-
-  const btn = document.getElementById('btn-tema');
-  const etichette = { chiaro: 'Tema chiaro', scuro: 'Tema scuro' };
-  const testo = etichette[t] || 'Tema automatico (come il sistema)';
-  btn.replaceChildren(icon(t === 'chiaro' ? 'sole' : t === 'scuro' ? 'luna' : 'auto'));
-  btn.setAttribute('aria-label', `${testo}. Cambia tema`);
-  btn.title = testo;
-}
-
-function cambiaTema() {
-  const ordine = [null, 'chiaro', 'scuro'];
-  prefs.tema = ordine[(ordine.indexOf(prefs.tema) + 1) % ordine.length];
-  applicaTema();
-}
 
 // ---------------------------------------------------------------------
 //  Rotte
@@ -50,13 +26,16 @@ const protetta = (fn) => (params, query) => {
   return fn(params, query);
 };
 
-rotta('/', protetta(pub.home));
-rotta('/materia/:slug', protetta(pub.materia));
+rotta('/', protetta(dash.home));
+rotta('/agenda', protetta(dash.agenda));
+// Una sola pagina per materia: lo staff ci trova anche estrazioni e gestione.
+rotta('/materia/:slug', (params, query) => (sessione.isStaff ? staff.staffMateria(params) : protetta(pub.materia)(params, query)));
 rotta('/registro', protetta(pub.registro));
 rotta('/cerca', protetta(pub.cerca));
+rotta('/profilo', dash.profilo);
 rotta('/accesso', pub.accesso);
 rotta('/staff', staff.staffHome);
-rotta('/staff/materia/:slug', staff.staffMateria);
+rotta('/staff/materia/:slug', ({ slug }) => { location.replace('#/materia/' + encodeURIComponent(slug)); return null; });
 rotta('/staff/studenti', staff.staffStudenti);
 rotta('/staff/utenti', staff.staffUtenti);
 rotta('/staff/impostazioni', staff.staffImpostazioni);
@@ -66,21 +45,37 @@ rotta('/staff/cestino', staff.staffCestino);
 rotta('/staff/nuova-password', staff.staffNuovaPassword);
 
 let primaNavigazione = true;
+function sezioneDi(path) {
+  if (path === '/' || path.startsWith('/materia')) return 'home';
+  if (path.startsWith('/agenda')) return 'agenda';
+  if (path.startsWith('/registro')) return 'registro';
+  if (path.startsWith('/accesso')) return '';
+  return 'profilo';   // profilo, cerca, area staff
+}
+
+/** Etichetta della quarta scheda: "Gestione" per lo staff. */
+function aggiornaEtichette() {
+  const voce = document.querySelector('[data-nav="profilo"] .nav-label');
+  if (voce) voce.textContent = sessione.isStaff ? 'Gestione' : 'Profilo';
+}
+
 function dopoCambioRotta(path) {
-  const sezione = path.startsWith('/staff') ? 'staff'
-    : path.startsWith('/registro') ? 'registro'
-    : path.startsWith('/cerca') ? 'cerca'
-    : path.startsWith('/accesso') ? '' : 'home';
+  const sezione = sezioneDi(path);
+  document.body.dataset.pagina = path === '/' ? 'home' : sezione === 'home' ? 'materia' : sezione || 'accesso';
+  aggiornaEtichette();
   const voci = [...document.querySelectorAll('[data-nav]')];
   voci.forEach((a) => {
     if (a.dataset.nav === sezione) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  // Indicatore del dock: scivola sotto la scheda attiva.
+  // Indicatore della barra: scivola sotto la scheda attiva.
   const nav = document.querySelector('.app-nav');
   const idx = voci.findIndex((a) => a.dataset.nav === sezione);
   nav.dataset.idx = String(idx);
-  nav.style.setProperty('--idx', String(Math.max(0, idx)));
+  if (idx >= 0 && nav.style.getPropertyValue('--idx') !== String(idx)) {
+    nav.style.setProperty('--idx', String(idx));
+    nav.classList.remove('cambia'); void nav.offsetWidth; nav.classList.add('cambia');
+  }
   // Transizione di pagina.
   const v = view();
   v.classList.remove('vista-entra'); void v.offsetWidth; v.classList.add('vista-entra');
@@ -99,7 +94,7 @@ function dopoCambioRotta(path) {
 async function avvio() {
   document.querySelectorAll('[data-icon]').forEach((el) => el.replaceWith(icon(el.dataset.icon, 24)));
   applicaTema();
-  document.getElementById('btn-tema').addEventListener('click', cambiaTema);
+  document.getElementById('btn-tema').addEventListener('click', (e) => ciclaTema(e.currentTarget));
   // Header in vetro quando si scorre la pagina.
   const suScroll = () => document.body.classList.toggle('scorrendo', window.scrollY > 8);
   window.addEventListener('scroll', suScroll, { passive: true });

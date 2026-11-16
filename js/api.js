@@ -114,6 +114,7 @@ export const api = {
   registro: ({ slug = null, studente = null, limit = 100, offset = 0 } = {}) =>
     rpc('get_changelog', { p_code: codice(), p_slug: slug, p_studente: studente, p_limit: limit, p_offset: offset }),
   cerca: (q) => rpc('cerca_studente', { p_code: codice(), p_q: q }),
+  agenda: (dal, al) => rpc('get_agenda', { p_code: codice(), p_dal: dal ?? null, p_al: al ?? null }),
 
   // -------- staff --------
   staffMateria: (slug) => rpc('staff_get_subject', { p_slug: slug }),

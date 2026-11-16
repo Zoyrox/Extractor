@@ -8,7 +8,7 @@
 //   realtime si vedrebbero per un attimo i dati vecchi.
 // - Scritture, login e chiamate dello staff: mai in cache.
 
-const VERSIONE = 'v3.1.0';
+const VERSIONE = 'v4.0.0';
 const CACHE_SHELL = `shell-${VERSIONE}`;
 const CACHE_CDN = 'cdn-v1';
 const CACHE_DATI = 'dati-v1';
@@ -35,13 +35,15 @@ const SHELL = [
   './js/router.js',
   './js/ui.js',
   './js/orario.js',
+  './js/tema.js',
+  './js/views/dashboard.js',
   './js/views/common.js',
   './js/views/public.js',
   './js/views/staff.js',
 ];
 
 // RPC di sola lettura che si possono mettere in cache.
-const RPC_LETTURA = /\/rest\/v1\/rpc\/(get_class_data|get_subject|get_changelog|cerca_studente)$/;
+const RPC_LETTURA = /\/rest\/v1\/rpc\/(get_class_data|get_subject|get_changelog|cerca_studente|get_agenda)$/;
 const CDN = ['cdn.jsdelivr.net'];
 
 self.addEventListener('install', (event) => {

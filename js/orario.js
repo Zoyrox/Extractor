@@ -32,7 +32,7 @@ export function giornoSettimana(iso) {
   return g === 0 ? 7 : g;
 }
 
-function aggiungiGiorni(iso, n) {
+export function aggiungiGiorni(iso, n) {
   const d = new Date(iso + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);

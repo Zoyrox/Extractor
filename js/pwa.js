@@ -50,22 +50,35 @@ function registraServiceWorker() {
   });
 }
 
+/** true se il browser permette di installare l'app (Chrome/Edge/Android). */
+export const puoInstallare = () => !!promptInstallazione;
+
+/** Mostra la richiesta di installazione del browser. */
+export async function installa() {
+  if (!promptInstallazione) return false;
+  promptInstallazione.prompt();
+  const scelta = await promptInstallazione.userChoice.catch(() => null);
+  promptInstallazione = null;
+  aggiornaPulsante();
+  return scelta?.outcome === 'accepted';
+}
+
+function aggiornaPulsante() {
+  const btn = document.getElementById('btn-installa');
+  if (btn) btn.hidden = !promptInstallazione;
+  document.dispatchEvent(new CustomEvent('installabile'));
+}
+
 function gestisciInstallazione() {
   const btn = document.getElementById('btn-installa');
   btn.append(icon('installa'));
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     promptInstallazione = e;
-    btn.hidden = false;
+    aggiornaPulsante();
   });
-  btn.addEventListener('click', async () => {
-    if (!promptInstallazione) return;
-    promptInstallazione.prompt();
-    await promptInstallazione.userChoice.catch(() => {});
-    promptInstallazione = null;
-    btn.hidden = true;
-  });
-  window.addEventListener('appinstalled', () => { btn.hidden = true; });
+  btn.addEventListener('click', installa);
+  window.addEventListener('appinstalled', () => { promptInstallazione = null; aggiornaPulsante(); });
 }
 
 /** Su iOS non esiste beforeinstallprompt: mostriamo le istruzioni una volta. */

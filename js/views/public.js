@@ -69,117 +69,6 @@ export function accesso(_params, query) {
   input.focus();
 }
 
-/** Pulsante "Esci da questo dispositivo" (dimentica il codice). */
-function pulsanteEsci() {
-  if (!prefs.codice) return null;
-  return h('button', {
-    class: 'btn btn-ghost btn-sm',
-    onclick: async () => {
-      const ok = await conferma({ titolo: 'Uscire?', messaggio: 'Il codice di classe verrà dimenticato su questo dispositivo e i dati salvati per l\'uso offline verranno cancellati.', ok: 'Esci' });
-      if (!ok) return;
-      prefs.codice = null;
-      try { await caches.delete('dati-v1'); } catch { /* cache non disponibile */ }
-      vai(sessione.isStaff ? '/' : '/accesso');
-    },
-  }, icon('esci', 16), 'Esci da questo dispositivo');
-}
-
-// ---------------------------------------------------------------------
-//  Home: materie con la prossima data
-// ---------------------------------------------------------------------
-
-export function home() {
-  const lista = h('div');
-  const cerca = h('input', { type: 'search', placeholder: 'Cerca il tuo nome…', 'aria-label': 'Cerca il tuo nome', autocomplete: 'off' });
-  mount(vistaEl(),
-    h('div', { class: 'titolo-pagina' },
-      h('div', {}, h('h1', {}, 'Materie'), h('p', { class: 'sotto' }, 'Le prossime interrogazioni della classe'))),
-    h('form', {
-      class: 'cerca-box', role: 'search', style: 'margin-bottom:1.25rem',
-      onsubmit: (e) => { e.preventDefault(); vai('/cerca?q=' + encodeURIComponent(cerca.value.trim())); },
-    }, icon('cerca', 18), cerca),
-    lista,
-    h('div', { class: 'azioni', style: 'justify-content:center;margin-top:2rem' }, pulsanteEsci()));
-
-  return creaVista(lista, {
-    carica: async () => {
-      const mioNome = prefs.mioNome;
-      const [classe, mie] = await Promise.all([
-        api.classe(),
-        mioNome ? api.cerca(mioNome).catch(() => null) : null,
-      ]);
-      return { ...classe, mie };
-    },
-    disegna: (d) => {
-      if (!d.materie.length) {
-        return vuoto('Nessuna materia', 'L\'amministratore non ha ancora creato le materie.', 'libro');
-      }
-      return h('div', {}, cardProssima(d.materie), cardMieDate(d.mie), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
-    },
-  });
-}
-
-/** Card in evidenza: la prossima interrogazione della classe (tra tutte le materie). */
-function cardProssima(materie) {
-  const prossime = materie.filter((m) => m.prossima)
-    .sort((a, b) => (a.prossima.data + (a.prossima.ora || 9)).localeCompare(b.prossima.data + (b.prossima.ora || 9)));
-  const m = prossime[0];
-  if (!m) return null;
-  const p = m.prossima;
-  const rel = quandoRelativo(p.data);
-  return h('a', {
-    class: 'hero-prossima', href: `#/materia/${encodeURIComponent(m.slug)}`, style: `--colore:${coloreMateria(m)}`,
-    'data-key': 'hero', 'data-firma': firma([m.id, p]),
-  },
-    h('span', { class: 'hp-etichetta' }, 'Prossima interrogazione'),
-    h('span', { class: 'hp-materia' }, m.nome),
-    h('span', { class: 'hp-data' }, dataTitolo(p.data), rel ? h('span', { class: 'hp-rel' }, rel) : null),
-    descriviOraProf(p) ? h('span', { class: 'hp-ora' }, icon('orologio', 16), descriviOraProf(p)) : null,
-    h('span', { class: 'hp-posti' }, p.n_assegnati ? `${p.n_assegnati} di ${p.max_interrogati} estratti` : `${p.max_interrogati} da interrogare · estrazione da fare`));
-}
-
-/** "Le mie date": le prossime interrogazioni di chi ha salvato il proprio nome. */
-function cardMieDate(mie) {
-  // Solo se il nome salvato corrisponde a una persona sola.
-  if (!mie || mie.risultati?.length !== 1) return null;
-  const r = mie.risultati[0];
-  const prossime = r.date.filter((x) => giorniDa(x.data) >= 0 && x.stato !== 'interrogato');
-  return h('section', { class: 'card mie-date', 'data-key': 'mie-date', 'data-firma': firma(prossime) },
-    h('h2', {}, icon('utente', 20), `Le tue date, ${r.nome}`),
-    prossime.length
-      ? h('ul', { class: 'persone' }, prossime.map((x) =>
-          h('li', { class: 'persona' },
-            h('a', { class: 'nome', href: `#/materia/${encodeURIComponent(x.slug)}` }, x.materia),
-            h('span', {}, dataTitolo(x.data), descriviOra(x) ? ` · ${descriviOra(x)}` : ''),
-            quandoRelativo(x.data) ? h('span', { class: 'tag accent' }, quandoRelativo(x.data)) : null,
-            badge(x.stato),
-            x.volontario ? h('span', { class: 'tag' }, icon('mano', 14), 'Volontario') : null)))
-      : h('p', { class: 'muted', style: 'margin:0' }, 'Nessuna interrogazione in programma per te.'),
-    h('p', { class: 'piccolo', style: 'margin:.75rem 0 0' }, h('a', { href: '#/cerca' }, 'Cambia nome o vedi lo storico')));
-}
-
-function cardMateria(m) {
-  const p = m.prossima;
-  const rel = p ? quandoRelativo(p.data) : '';
-  return h('a', {
-    class: 'card materia-card', href: `#/materia/${encodeURIComponent(m.slug)}`,
-    'data-key': `m-${m.id}`, 'data-firma': firma([m.nome, m.colore, p]),
-    style: `--colore:${coloreMateria(m)}`,
-  },
-    h('div', { class: 'card-head' },
-      avatarMateria(m),
-      h('h2', {}, m.nome),
-      h('span', { class: 'freccia' }, icon('freccia', 18))),
-    p
-      ? [
-          h('p', { class: 'prossima-data' }, 'Prossima: ', dataLunga(p.data), rel ? h('span', { class: 'tag accent', style: 'margin-left:.4rem' }, rel) : null),
-          descriviOraProf(p) ? h('p', { class: 'ora-prof' }, icon('orologio', 14), descriviOraProf(p)) : null,
-          p.argomento ? h('p', { class: 'meta' }, testoConLink(p.argomento, false)) : null,
-          h('p', { class: 'meta' }, p.n_assegnati ? `${p.n_assegnati} di ${p.max_interrogati} già estratti` : `${p.max_interrogati} da interrogare · estrazione da fare`),
-        ]
-      : h('p', { class: 'meta' }, m.n_sessioni ? 'Nessuna interrogazione in programma' : 'Nessuna sessione creata'));
-}
-
 // ---------------------------------------------------------------------
 //  Pagina materia
 // ---------------------------------------------------------------------
@@ -222,7 +111,7 @@ function disegnaMateria(d) {
 
   return h('div', { style: `--colore:${coloreMateria(d.materia)}` },
     h('div', { class: 'barra-pagina' },
-      h('a', { href: '#/', class: 'btn btn-ghost btn-sm' }, icon('indietro', 16), 'Materie'),
+      h('a', { href: '#/', class: 'btn btn-ghost btn-sm' }, icon('indietro', 16), 'Home'),
       h('div', { class: 'riga' },
         h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Condividi il link', title: 'Condividi', onclick: condividi }, icon('condividi', 20)),
         h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Esporta immagine o PDF', title: 'Esporta', onclick: () => apriEsportazione(d) }, icon('download', 20)))),

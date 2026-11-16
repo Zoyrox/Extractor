@@ -12,6 +12,7 @@ import {
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { avatarMateria } from './public.js';
 import { mostraEstrazione } from '../draw.js';
+import { apriEsportazione } from '../export.js';
 import { giorniSuggeriti, profPerMateria, descriviOraProf, coloreMateria, giornoSettimana, PALETTE, GIORNI, GIORNI_BREVI } from '../orario.js';
 
 // ---------------------------------------------------------------------
@@ -46,7 +47,7 @@ function guardia({ admin = false } = {}) {
   if (!sessione.isStaff) { vai('/staff'); return false; }
   if (admin && !sessione.isAdmin) {
     mount(vistaEl(), vuoto('Riservato all\'amministratore', 'Questa sezione è disponibile solo per l\'admin.', 'scudo',
-      h('a', { class: 'btn', href: '#/staff' }, 'Torna all\'area staff')));
+      h('a', { class: 'btn', href: '#/profilo' }, 'Torna a Gestione')));
     return false;
   }
   return true;
@@ -64,7 +65,9 @@ export function staffHome() {
   if (!sb) { guardia(); return; }
   if (!sessione.utente) return formAccesso();
   if (!sessione.isStaff) return attesaApprovazione();
-  return dashboard();
+  // Lo staff gestisce tutto da Profilo/Gestione e dalle pagine delle materie.
+  location.replace('#/profilo');
+  return null;
 }
 
 function traduciErroreAuth(e) {
@@ -186,62 +189,7 @@ function attesaApprovazione() {
         h('button', { class: 'btn btn-ghost', onclick: esci }, icon('esci', 16), 'Esci')))));
 }
 
-function dashboard() {
-  const cont = h('div');
-  const p = sessione.profilo;
-  mount(vistaEl(),
-    intestazione('Area staff', `${p.email} · ${p.ruolo === 'admin' ? 'Amministratore' : 'Rappresentante'}`,
-      h('button', { class: 'btn btn-sm', onclick: esci }, icon('esci', 16), 'Esci')),
-    cont);
-
-  return creaVista(cont, {
-    carica: async () => ({
-      materie: await api.tabella('subjects', 'id,nome,slug,ordine,colore', 'ordine'),
-      staff: sessione.isAdmin ? await api.tabella('staff', 'user_id,approvato', 'creato_il') : [],
-    }),
-    disegna: (d) => {
-      const inAttesa = d.staff.filter((s) => !s.approvato).length;
-      return h('div', {},
-        h('section', {},
-          h('div', { class: 'riga', style: 'margin-bottom:.75rem' },
-            h('h2', { style: 'margin:0' }, 'Materie'),
-            h('span', { class: 'spazio' }),
-            sessione.isAdmin ? h('button', { class: 'btn btn-primary btn-sm', onclick: () => dialogoMateria(null) }, icon('piu', 16), 'Nuova materia') : null),
-          d.materie.length
-            ? h('div', { class: 'griglia' }, d.materie.map((m) =>
-                h('div', { class: 'card', 'data-key': `m-${m.id}`, 'data-firma': firma(m) },
-                  h('div', { class: 'card-head' },
-                    avatarMateria(m),
-                    h('h3', { style: 'flex:1;align-self:center' }, m.nome),
-                    sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Modifica ${m.nome}`, onclick: () => dialogoMateria(m) }, icon('matita', 18)) : null,
-                    sessione.isAdmin ? h('button', { class: 'btn-icon sm', 'aria-label': `Elimina ${m.nome}`, onclick: () => eliminaMateria(m) }, icon('cestino', 18)) : null),
-                  h('p', { class: 'meta' }, `#/materia/${m.slug}`),
-                  h('div', { class: 'azioni-card' },
-                    h('a', { class: 'btn btn-primary btn-sm', href: `#/staff/materia/${encodeURIComponent(m.slug)}` }, icon('dado', 16), 'Sessioni ed estrazioni'),
-                    h('a', { class: 'btn btn-sm', href: `#/materia/${encodeURIComponent(m.slug)}` }, 'Vista pubblica')))))
-            : vuoto('Nessuna materia', sessione.isAdmin ? 'Crea la prima materia per iniziare.' : 'L\'amministratore non ha ancora creato materie.', 'libro')),
-        sessione.isAdmin
-          ? h('section', { class: 'sezione' },
-              h('h2', {}, icon('impostazioni', 16), 'Amministrazione'),
-              h('div', { class: 'griglia tre' },
-                linkCard('#/staff/studenti', 'gruppo', 'Elenco studenti', 'Carica il JSON, aggiungi, modifica o disattiva.'),
-                linkCard('#/staff/utenti', 'scudo', 'Staff e rappresentanti', inAttesa ? `${inAttesa} in attesa di approvazione` : 'Approva o revoca i rappresentanti.', inAttesa > 0),
-                linkCard('#/staff/impostazioni', 'impostazioni', 'Codice di classe', 'Imposta o cambia il codice per i compagni.'),
-                linkCard('#/staff/orario', 'calendario', 'Orario e prof', 'Ore di lezione, orario settimanale e prof di ogni materia.'),
-                linkCard('#/staff/cestino', 'cestino', 'Cestino', 'Sessioni eliminate (anche dai rappresentanti), da ripristinare.'),
-                linkCard('#/staff/backup', 'download', 'Backup', 'Copie automatiche settimanali e download dei dati.')))
-          : null);
-    },
-  });
-}
-
-function linkCard(href, ic, titolo, testo, evidenziato = false) {
-  return h('a', { class: `card ${evidenziato ? 'prossima' : ''}`, href },
-    h('div', { class: 'riga' }, icon(ic, 20), h('h3', { style: 'margin:0' }, titolo)),
-    h('p', { class: 'meta' }, testo));
-}
-
-async function dialogoMateria(m) {
+export async function dialogoMateria(m) {
   await dialogo(m ? 'Modifica materia' : 'Nuova materia', (chiudi) => {
     const nome = h('input', { required: true, maxlength: 60, value: m?.nome || '' });
     const slug = h('input', { required: true, maxlength: 60, pattern: '[a-z0-9]+(-[a-z0-9]+)*', value: m?.slug || '' });
@@ -273,13 +221,13 @@ async function dialogoMateria(m) {
   });
 }
 
-async function eliminaMateria(m) {
+export async function eliminaMateria(m) {
   const ok = await conferma({
     titolo: `Eliminare "${m.nome}"?`,
     messaggio: 'Verranno eliminate anche tutte le sessioni e le assegnazioni di questa materia. Il registro modifiche resta. L\'operazione non si può annullare.',
     ok: 'Elimina definitivamente', pericolo: true,
   });
-  if (ok) await esegui(() => api.eliminaMateria(m.id), 'Materia eliminata');
+  return ok ? esegui(() => api.eliminaMateria(m.id), 'Materia eliminata') : null;
 }
 
 // ---------------------------------------------------------------------
@@ -510,14 +458,17 @@ function disegnaGestione(d, vista, stato, aggiornaBarra) {
 
   return h('div', { style: `--colore:${coloreMateria(d.materia)}` },
     h('div', { class: 'barra-pagina' },
-      indietro('#/staff', 'Staff'),
+      indietro('#/', 'Home'),
       ciSonoPersone ? h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: toggleSelezione }, stato.selezione ? 'Fine' : 'Seleziona') : null),
     h('header', { class: 'hero-materia' },
       avatarMateria(d.materia),
       h('div', { class: 'hm-testo' },
         h('h1', {}, d.materia.nome),
         h('p', {}, `${d.pool.length} nel sorteggio · ${future.length} ${future.length === 1 ? 'sessione' : 'sessioni'} in programma`)),
-      h('a', { class: 'btn-icon', href: `#/materia/${encodeURIComponent(d.materia.slug)}`, 'aria-label': 'Vista pubblica', title: 'Vista pubblica' }, icon('link', 20))),
+      h('div', { class: 'riga', style: 'flex-wrap:nowrap;gap:.2rem' },
+        h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Esporta immagine o PDF', title: 'Esporta',
+          onclick: async () => { const dati = await esegui(() => api.materia(d.materia.slug)); if (dati) apriEsportazione(dati); } }, icon('download', 20)),
+        h('a', { class: 'btn-icon', href: `#/registro?materia=${encodeURIComponent(d.materia.slug)}`, 'aria-label': 'Registro della materia', title: 'Registro della materia' }, icon('storia', 20)))),
 
     h('button', { class: 'btn btn-primary btn-blocco btn-grande', type: 'button', onclick: async () => { if (await dialogoNuoveSessioni(d)) aggiorna(); } }, icon('piu', 20), 'Nuove sessioni'),
 
@@ -1124,7 +1075,7 @@ export function staffStudenti() {
   let studenti = [];
 
   mount(vistaEl(),
-    indietro('#/staff', 'Area staff'),
+    indietro('#/profilo', 'Gestione'),
     intestazione('Elenco studenti', 'Ogni modifica finisce nel registro, visibile a tutti.'),
     h('div', { class: 'riga', style: 'margin-bottom:1rem' },
       h('button', { class: 'btn btn-primary btn-sm', onclick: () => dialogoStudente(null) }, icon('piu', 16), 'Aggiungi'),
@@ -1293,7 +1244,7 @@ export function staffUtenti() {
   if (!guardia({ admin: true })) return;
   const cont = h('div');
   mount(vistaEl(),
-    indietro('#/staff', 'Area staff'),
+    indietro('#/profilo', 'Gestione'),
     intestazione('Staff e rappresentanti', 'Chi si registra non ha permessi finché non lo approvi.'),
     cont);
 
@@ -1352,7 +1303,7 @@ export function staffImpostazioni() {
   const c2 = h('input', { type: 'password', minlength: 6, maxlength: 100, required: true, autocomplete: 'new-password' });
   const errore = h('p', { class: 'campo-errore', role: 'alert' });
   mount(vistaEl(),
-    indietro('#/staff', 'Area staff'),
+    indietro('#/profilo', 'Gestione'),
     intestazione('Codice di classe', 'Serve ai compagni per vedere le date. Viene salvato solo come hash (bcrypt).'),
     h('form', {
       class: 'card', style: 'max-width:520px',
@@ -1427,7 +1378,7 @@ export function staffBackup() {
   if (!guardia({ admin: true })) return;
   const cont = h('div');
   mount(vistaEl(),
-    indietro('#/staff', 'Area staff'),
+    indietro('#/profilo', 'Gestione'),
     intestazione('Backup', 'Ogni lunedì il database salva da solo una copia di tutti i dati (le ultime 12). Puoi anche scaricarne una adesso.',
       h('button', {
         class: 'btn btn-primary btn-sm',
@@ -1476,7 +1427,7 @@ function aggiungiMinuti(hhmm, min) {
 export function staffOrario(_params, query) {
   if (!guardia({ admin: true })) return;
   const cont = h('div');
-  mount(vistaEl(), indietro('#/staff', 'Area staff'),
+  mount(vistaEl(), indietro('#/profilo', 'Gestione'),
     intestazione('Orario e prof', 'Servono a suggerire i giorni quando si crea una sessione.'), cont);
 
   let orario = null;          // dati dal server
@@ -1675,7 +1626,7 @@ export function staffOrario(_params, query) {
 export function staffCestino() {
   if (!guardia({ admin: true })) return;
   const cont = h('div');
-  mount(vistaEl(), indietro('#/staff', 'Area staff'),
+  mount(vistaEl(), indietro('#/profilo', 'Gestione'),
     intestazione('Cestino', 'Sessioni eliminate negli ultimi 90 giorni. Ripristinandole tornano con le persone assegnate.'), cont);
   const vista = creaVista(cont, {
     carica: () => api.cestino(),

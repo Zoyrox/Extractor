@@ -16,7 +16,7 @@ export const vistaEl = () => document.getElementById('view');
  * aggiornamento e l'altro: quelli nuovi o cambiati vengono evidenziati.
  * Restituisce { aggiorna(motivo), distruggi() } per il router e il realtime.
  */
-export function creaVista(container, { carica, disegna, righeSkeleton = 3, inPausa = () => false }) {
+export function creaVista(container, { carica, disegna, righeSkeleton = 3, scheletro = null, inPausa = () => false }) {
   let firme = null;          // null = primo caricamento non ancora riuscito
   let attivo = true;
   let inCorso = false;
@@ -30,7 +30,7 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3, inPau
     if (firme !== null && inPausa()) { setTimeout(() => aggiorna(motivo), 400); return; }
     inCorso = true;
     const primo = firme === null;
-    if (primo) mount(container, skeleton(righeSkeleton));
+    if (primo) mount(container, scheletro ? scheletro() : skeleton(righeSkeleton));
     try {
       const dati = await carica();
       if (!attivo) return;

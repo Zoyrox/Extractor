@@ -9,8 +9,7 @@
   <meta name="referrer" content="no-referrer">
   <title>Interrogazioni 5C</title>
   <meta name="description" content="Date e interrogati della classe 5C Informatica">
-  <meta name="theme-color" content="#f5f4fb" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0a0a12" media="(prefers-color-scheme: dark)">
+  <meta id="meta-tema" name="theme-color" content="#f3f2f9">
   <meta name="color-scheme" content="light dark">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -28,17 +27,17 @@
       var t = localStorage.getItem('estrazioni5c:tema');
       if (t === 'chiaro') document.documentElement.dataset.theme = 'light';
       if (t === 'scuro') document.documentElement.dataset.theme = 'dark';
+      var scuro = t === 'scuro' || (t !== 'chiaro' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.getElementById('meta-tema').setAttribute('content', scuro ? '#0e0c1b' : '#f3f2f9');
     } catch (e) {}
   </script>
 </head>
 <body>
   <a class="skip-link" href="#main">Vai al contenuto</a>
-  <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
-
   <header class="app-header">
     <div class="header-inner">
       <a class="brand" href="#/" aria-label="Interrogazioni 5C, home">
-        <img class="brand-logo" src="icons/icon.svg" alt="" width="30" height="30">
+        <img class="brand-logo" src="icons/icon.svg" alt="" width="34" height="34">
         <span class="brand-testo">Interrogazioni<small>5C Informatica</small></span>
       </a>
       <div class="header-azioni">
@@ -50,15 +49,20 @@
   </header>
 
   <nav class="app-nav" aria-label="Navigazione principale">
-    <div class="dock">
-      <span class="dock-pill" aria-hidden="true"></span>
+    <a class="brand nav-brand" href="#/" aria-label="Interrogazioni 5C, home">
+      <img class="brand-logo" src="icons/icon.svg" alt="" width="34" height="34">
+      <span class="brand-testo">Interrogazioni<small>5C Informatica</small></span>
+    </a>
+    <div class="nav-voci">
+      <span class="nav-pill" aria-hidden="true"></span>
       <ul>
-        <li><a href="#/" data-nav="home"><span data-icon="libro"></span><span class="dock-label">Materie</span></a></li>
-        <li><a href="#/cerca" data-nav="cerca"><span data-icon="cerca"></span><span class="dock-label">Il mio nome</span></a></li>
-        <li><a href="#/registro" data-nav="registro"><span data-icon="storia"></span><span class="dock-label">Registro</span></a></li>
-        <li><a href="#/staff" data-nav="staff"><span data-icon="scudo"></span><span class="dock-label">Staff</span></a></li>
+        <li><a href="#/" data-nav="home"><span data-icon="casa"></span><span class="nav-label">Home</span></a></li>
+        <li><a href="#/agenda" data-nav="agenda"><span data-icon="calendario"></span><span class="nav-label">Agenda</span></a></li>
+        <li><a href="#/registro" data-nav="registro"><span data-icon="storia"></span><span class="nav-label">Registro</span></a></li>
+        <li><a href="#/profilo" data-nav="profilo"><span data-icon="utente"></span><span class="nav-label">Profilo</span></a></li>
       </ul>
     </div>
+    <p class="nav-piede">Dati della classe in tempo reale.<br>Sito privato, non indicizzato.</p>
   </nav>
 
   <main id="main" tabindex="-1">
