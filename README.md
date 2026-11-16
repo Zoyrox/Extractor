@@ -30,7 +30,7 @@ js/views/public.js         home, materia, registro, "il mio nome", accesso
 js/views/staff.js          area staff (estrazioni, imprevisti, elenco, utenti, codice)
 sw.js                      service worker (cache shell + dati offline)
 manifest.json, icons/      PWA (icone 192/512, maskable, Apple)
-fonts/                     Plus Jakarta Sans (licenza SIL OFL, vedi fonts/OFL.txt), servito in locale
+fonts/                     Funnel Display/Sans e DM Mono (licenza SIL OFL, vedi fonts/OFL-*.txt), serviti in locale
 robots.txt, .nojekyll      non indicizzabile; Pages senza Jekyll
 supabase/migrations/*.sql  schema (applicato dall'integrazione GitHub di Supabase)
 supabase/schema.sql        tutte le migrazioni in un unico file, da incollare a mano nello SQL Editor
@@ -197,6 +197,14 @@ Per attivarla: GitHub → **Settings → Secrets and variables → Actions** →
 **Pool di estrazione** (per materia): studenti attivi, non già presenti in nessuna sessione della materia (in qualunque stato) e non esclusi a mano.
 
 ---
+
+## Design
+
+Interfaccia rifatta con la *taste-skill* (Leonxlnx/taste-skill 2.5): tipo **software**, palette **teal on paper** (carta `#f7f9f8`, inchiostro e accento verde petrolio `#06525c`), caratteri **Funnel Display / Funnel Sans** con **DM Mono** per orari e numeri, raggi 8/12/20 px, una sola coppia di pulsanti (pieno e "tonal"), marchio "dots". Header opaco con filetto; su desktop le voci con una barra di 2 px che scivola sotto la sezione attiva, sul telefono la barra delle schede in basso con l'indicatore in alto. Footer "statement".
+
+La schermata di accesso è una landing: hero con l'app vera mostrata in una finestra (la card dell'estrazione si ripete, con pulsante di pausa), fascia scura "come funziona", riga delle materie che scorre (con pausa), chiusura e footer.
+
+Movimento solo dove serve: ingresso del titolo riga per riga a ogni pagina, hover (card +2 px, pulsanti +1 px e pressione), sottolineature che si disegnano, indicatori che scivolano, menu e fogli in 200–240 ms. Niente rimbalzi, vetro, gradienti o comparse allo scorrimento; con "riduci movimento" è tutto fermo. Contrasto AA in entrambi i temi; i testi della landing passano il `copy-lint` della skill senza errori né avvisi.
 
 ## Sicurezza: com'è fatta
 

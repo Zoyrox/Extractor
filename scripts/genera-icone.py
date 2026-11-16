@@ -5,29 +5,26 @@ Uso:  python3 scripts/genera-icone.py
 Crea in icons/: icon.svg, icon-192.png, icon-512.png, icon-maskable-192.png,
 icon-maskable-512.png, apple-touch-icon.png (180x180).
 
-Disegno (coordinate su 512x512): sfondo indaco, un foglio bianco con tre
-righe; la prima ha il pallino giallo, cioè "l'estratto".
+Disegno (coordinate su 512x512): il marchio "dots" della skill di design
+(tre cerchi e un quadrato) color carta su fondo verde petrolio.
 """
 import os
 import struct
 import zlib
 
-ACCENTO = (0x54, 0x42, 0xE6)
-BIANCO = (0xFF, 0xFF, 0xFF)
-GIALLO = (0xF5, 0xB4, 0x00)
-CHIARO = (0xC7, 0xD2, 0xFE)
+ACCENTO = (0x06, 0x52, 0x5C)   # verde petrolio (palette "teal on paper")
+CARTA = (0xF7, 0xF9, 0xF8)
 
 CARTELLA = os.path.join(os.path.dirname(__file__), '..', 'icons')
 
 
 def forme(sfondo_raggio):
-    """Elenco di forme (tipo, parametri, colore) in ordine di disegno."""
-    f = [('rrect', (0, 0, 512, 512, sfondo_raggio), ACCENTO),
-         ('rrect', (112, 128, 288, 256, 36), BIANCO)]
-    for i, cy in enumerate((196, 256, 316)):
-        f.append(('circle', (160, cy, 18), GIALLO if i == 0 else CHIARO))
-        f.append(('rrect', (196, cy - 12, 156 if i == 0 else 120, 24, 12), ACCENTO if i == 0 else CHIARO))
-    return f
+    """Il marchio "dots" (tre cerchi e un quadrato) su fondo verde petrolio."""
+    return [('rrect', (0, 0, 512, 512, sfondo_raggio), ACCENTO),
+            ('circle', (201, 201, 45), CARTA),
+            ('circle', (311, 201, 45), CARTA),
+            ('circle', (201, 311, 45), CARTA),
+            ('rrect', (266, 266, 90, 90, 15), CARTA)]
 
 
 def dentro(tipo, p, x, y):

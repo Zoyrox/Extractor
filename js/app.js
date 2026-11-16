@@ -5,7 +5,7 @@ import { prefs } from './prefs.js';
 import { rotta, avviaRouter, risolvi, vistaCorrente, percorsoCorrente } from './router.js';
 import { avviaRealtime } from './realtime.js';
 import { avviaPwa } from './pwa.js';
-import { h, icon, mount, vuoto, toast } from './ui.js';
+import { h, icon, mount, vuoto, toast, animaEntrata } from './ui.js';
 import * as pub from './views/public.js';
 import * as staff from './views/staff.js';
 
@@ -65,29 +65,56 @@ rotta('/staff/orario', staff.staffOrario);
 rotta('/staff/cestino', staff.staffCestino);
 rotta('/staff/nuova-password', staff.staffNuovaPassword);
 
+/**
+ * Indicatori della scheda attiva (motion.md, tabs: 240 ms, solo transform):
+ * una barra di 2 px sotto la parola nel header (desktop) e sopra l'icona
+ * nella barra delle schede (telefono).
+ */
+function posizionaIndicatori() {
+  const parole = document.querySelector('.nav-parole');
+  const attiva = parole?.querySelector('a[aria-current="page"]');
+  const ind = parole?.querySelector('.nav-indicatore');
+  if (ind) {
+    if (attiva) {
+      const base = parole.getBoundingClientRect().left;
+      const r = attiva.getBoundingClientRect();
+      ind.style.setProperty('--ind-x', `${r.left - base}px`);
+      ind.style.setProperty('--ind-w', String(r.width));
+    } else ind.style.setProperty('--ind-w', '0');
+  }
+  const tab = document.querySelector('.app-nav');
+  const voci = [...tab.querySelectorAll('[data-nav]')];
+  const idx = voci.findIndex((a) => a.hasAttribute('aria-current'));
+  tab.dataset.idx = String(idx);
+  tab.style.setProperty('--idx', String(Math.max(0, idx)));
+}
+
+function aggiornaFooter() {
+  const b = document.getElementById('btn-esci-footer');
+  if (b) b.hidden = !prefs.codice;
+}
+
 let primaNavigazione = true;
+let entrataFatta = false;
+let ultimoInputTastiera = false;
+addEventListener('keydown', (e) => { if (e.key === 'Tab' || e.key === 'Enter') ultimoInputTastiera = true; }, true);
+addEventListener('pointerdown', () => { ultimoInputTastiera = false; }, true);   // l'ingresso del titolo avviene una volta per pagina
 function dopoCambioRotta(path) {
   const sezione = path.startsWith('/staff') ? 'staff'
     : path.startsWith('/registro') ? 'registro'
     : path.startsWith('/cerca') ? 'cerca'
     : path.startsWith('/accesso') ? '' : 'home';
-  const voci = [...document.querySelectorAll('[data-nav]')];
-  voci.forEach((a) => {
+  document.querySelectorAll('[data-nav]').forEach((a) => {
     if (a.dataset.nav === sezione) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  // Indicatore del dock: scivola sotto la scheda attiva.
-  const nav = document.querySelector('.app-nav');
-  const idx = voci.findIndex((a) => a.dataset.nav === sezione);
-  nav.dataset.idx = String(idx);
-  nav.style.setProperty('--idx', String(Math.max(0, idx)));
-  // Transizione di pagina.
-  const v = view();
-  v.classList.remove('vista-entra'); void v.offsetWidth; v.classList.add('vista-entra');
+  posizionaIndicatori();
+  aggiornaFooter();
+  entrataFatta = false;
   if (!primaNavigazione) {
     window.scrollTo(0, 0);
-    // Accessibilità: sposta il focus sul contenuto alla navigazione.
-    document.getElementById('main').focus({ preventScroll: true });
+    // Accessibilità: chi naviga da tastiera riparte dal contenuto.
+    if (ultimoInputTastiera) document.getElementById('main').focus({ preventScroll: true });
   }
   primaNavigazione = false;
 }
@@ -97,13 +124,14 @@ function dopoCambioRotta(path) {
 // ---------------------------------------------------------------------
 
 async function avvio() {
-  document.querySelectorAll('[data-icon]').forEach((el) => el.replaceWith(icon(el.dataset.icon, 24)));
+  document.querySelectorAll('[data-icon]').forEach((el) => el.replaceWith(icon(el.dataset.icon, 22)));
   applicaTema();
   document.getElementById('btn-tema').addEventListener('click', cambiaTema);
-  // Header in vetro quando si scorre la pagina.
-  const suScroll = () => document.body.classList.toggle('scorrendo', window.scrollY > 8);
-  window.addEventListener('scroll', suScroll, { passive: true });
-  suScroll();
+  // Footer: anno corrente e "Esci da questo dispositivo".
+  document.getElementById('anno').textContent = String(new Date().getFullYear());
+  document.getElementById('btn-esci-footer').addEventListener('click', pub.esciDalDispositivo);
+  window.addEventListener('resize', posizionaIndicatori);
+  document.fonts?.ready.then(posizionaIndicatori);
   avviaPwa();
 
   if (!sb) {
@@ -144,6 +172,10 @@ async function avvio() {
     }, 0);
   });
 
+  // Ingresso del titolo: quando la vista monta un nuovo h1 (anche dopo il caricamento dei dati).
+  new MutationObserver(() => {
+    if (!entrataFatta && view().querySelector('h1')) { entrataFatta = true; animaEntrata(view()); }
+  }).observe(view(), { childList: true, subtree: true });
   await avviaRouter(dopoCambioRotta);
 
   // Realtime: al ping (o al fallback) aggiorna solo la vista corrente.

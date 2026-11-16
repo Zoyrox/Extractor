@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" data-type="software" data-radius="soft" data-buttons="tonal">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8,9 +8,11 @@
   <meta name="googlebot" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <title>Interrogazioni 5C</title>
-  <meta name="description" content="Date e interrogati della classe 5C Informatica">
-  <meta name="theme-color" content="#f5f4fb" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0a0a12" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Date e interrogati della classe 5C Informatica, estratti a sorte e aggiornati in tempo reale.">
+  <meta name="page-type" content="software">
+  <meta name="site-kind" content="software">
+  <meta name="theme-color" content="#f7f9f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c1719" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -20,7 +22,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Interrogazioni">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="preload" href="fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <!-- Design: taste-skill 2.5 · kind software · palette teal-on-paper · type funnel · radius soft ·
+       hero collage · moment marquee-row · nav-cards · footer-statement · close-type · dark-band · tonal · mark dots -->
+  <link rel="preload" href="fonts/funnel-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/funnel-display-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
   <script>
     // Applica il tema salvato prima del primo disegno (evita il "flash").
@@ -33,14 +38,22 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Vai al contenuto</a>
-  <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
 
   <header class="app-header">
-    <div class="header-inner">
+    <div class="wrap header-inner">
       <a class="brand" href="#/" aria-label="Interrogazioni 5C, home">
-        <img class="brand-logo" src="icons/icon.svg" alt="" width="30" height="30">
-        <span class="brand-testo">Interrogazioni<small>5C Informatica</small></span>
+        <span class="mark" data-mark="dots" aria-hidden="true"></span>
+        <span class="brand-testo">Interrogazioni 5C</span>
       </a>
+      <nav class="nav-parole" aria-label="Navigazione principale">
+        <ul>
+          <li><a href="#/" data-nav="home">Materie</a></li>
+          <li><a href="#/cerca" data-nav="cerca">Il mio nome</a></li>
+          <li><a href="#/registro" data-nav="registro">Registro</a></li>
+          <li><a href="#/staff" data-nav="staff">Staff</a></li>
+        </ul>
+        <span class="nav-indicatore" aria-hidden="true"></span>
+      </nav>
       <div class="header-azioni">
         <span id="live" class="live" role="status" aria-live="polite"></span>
         <button id="btn-installa" class="btn-icon" type="button" aria-label="Installa app" hidden></button>
@@ -49,16 +62,14 @@
     </div>
   </header>
 
-  <nav class="app-nav" aria-label="Navigazione principale">
-    <div class="dock">
-      <span class="dock-pill" aria-hidden="true"></span>
-      <ul>
-        <li><a href="#/" data-nav="home"><span data-icon="libro"></span><span class="dock-label">Materie</span></a></li>
-        <li><a href="#/cerca" data-nav="cerca"><span data-icon="cerca"></span><span class="dock-label">Il mio nome</span></a></li>
-        <li><a href="#/registro" data-nav="registro"><span data-icon="storia"></span><span class="dock-label">Registro</span></a></li>
-        <li><a href="#/staff" data-nav="staff"><span data-icon="scudo"></span><span class="dock-label">Staff</span></a></li>
-      </ul>
-    </div>
+  <nav class="app-nav" aria-label="Navigazione">
+    <ul>
+      <li><a href="#/" data-nav="home"><span data-icon="libro"></span><span class="tab-label">Materie</span></a></li>
+      <li><a href="#/cerca" data-nav="cerca"><span data-icon="cerca"></span><span class="tab-label">Il mio nome</span></a></li>
+      <li><a href="#/registro" data-nav="registro"><span data-icon="storia"></span><span class="tab-label">Registro</span></a></li>
+      <li><a href="#/staff" data-nav="staff"><span data-icon="scudo"></span><span class="tab-label">Staff</span></a></li>
+    </ul>
+    <span class="nav-indicatore" aria-hidden="true"></span>
   </nav>
 
   <main id="main" tabindex="-1">
@@ -69,6 +80,35 @@
       <noscript>Per usare l'app è necessario JavaScript.</noscript>
     </div>
   </main>
+
+  <footer class="closing" aria-labelledby="footer-titolo">
+    <div class="wrap closing__grid">
+      <div class="closing__statement">
+        <p class="closing__nome" id="footer-titolo">Interrogazioni 5C</p>
+        <p class="closing__frase">Date, estratti e imprevisti della classe, in un posto solo.</p>
+      </div>
+      <div class="closing__col">
+        <h2>Sezioni</h2>
+        <ul>
+          <li><a class="link-nav" href="#/">Materie</a></li>
+          <li><a class="link-nav" href="#/cerca">Il mio nome</a></li>
+          <li><a class="link-nav" href="#/registro">Registro modifiche</a></li>
+        </ul>
+      </div>
+      <div class="closing__col">
+        <h2>Classe</h2>
+        <ul>
+          <li><a class="link-nav" href="#/staff">Area staff</a></li>
+          <li><button class="link-nav" id="btn-esci-footer" type="button" hidden>Esci da questo dispositivo</button></li>
+        </ul>
+      </div>
+    </div>
+    <div class="wrap closing__legal">
+      <span>© <span id="anno">2026</span> Classe 5C Informatica</span>
+      <span>Sito privato, non indicizzato dai motori di ricerca</span>
+      <span>Caratteri Funnel e DM Mono, licenza SIL OFL</span>
+    </div>
+  </footer>
 
   <div id="toasts" aria-live="polite"></div>
 
