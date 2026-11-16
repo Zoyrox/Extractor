@@ -6,7 +6,7 @@ import { prefs } from '../prefs.js';
 import { vai, sostituisciQuery } from '../router.js';
 import {
   h, icon, mount, badge, toast, vuoto, dataLunga, dataTitolo, dataOra, quandoRelativo, giorniDa,
-  meseBreve, giornoNumero, testoConLink, iniziali, animaEntrata, nomeCompleto, conferma,
+  meseBreve, giornoNumero, testoConLink, iniziali, nomeCompleto, conferma,
 } from '../ui.js';
 import { creaVista, firma, dettagli, vistaEl } from './common.js';
 import { apriEsportazione } from '../export.js';
@@ -25,18 +25,21 @@ export function accesso(_params, query) {
   const dopo = query.get('dopo') || '/';
   const input = h('input', {
     id: 'codice', type: 'password', autocomplete: 'current-password', required: true,
-    maxlength: 100, 'aria-describedby': 'codice-aiuto codice-errore',
+    minlength: 1, maxlength: 100, 'aria-describedby': 'codice-aiuto',
   });
-  const errore = h('p', { class: 'campo-errore', id: 'codice-errore', role: 'alert' });
-  const invia = h('button', { class: 'btn btn-primary', type: 'submit' }, 'Entra con il codice');
+  const mostra = h('label', { class: 'check' },
+    h('input', { type: 'checkbox', onchange: (e) => { input.type = e.target.checked ? 'text' : 'password'; } }),
+    'Mostra il codice');
+  const errore = h('p', { class: 'campo-errore', role: 'alert' });
+  const invia = h('button', { class: 'btn btn-primary btn-blocco', type: 'submit' }, 'Entra');
 
   const form = h('form', {
-    class: 'l-form', novalidate: true,
+    class: 'card',
     onsubmit: async (e) => {
       e.preventDefault();
       const c = input.value.trim();
-      if (!c) { errore.textContent = 'Scrivi il codice di classe.'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
-      invia.disabled = true; errore.textContent = ''; input.removeAttribute('aria-invalid');
+      if (!c) { errore.textContent = 'Inserisci il codice.'; return; }
+      invia.disabled = true; errore.textContent = '';
       try {
         await api.verificaCodice(c);
         prefs.codice = c;
@@ -44,7 +47,6 @@ export function accesso(_params, query) {
         vai(dopo.startsWith('/') && !dopo.startsWith('/accesso') ? dopo : '/');
       } catch (err) {
         errore.textContent = err.message;
-        input.setAttribute('aria-invalid', 'true');
         input.focus();
       } finally {
         invia.disabled = false;
@@ -53,158 +55,18 @@ export function accesso(_params, query) {
   },
     h('label', { class: 'campo', for: 'codice' },
       h('span', {}, 'Codice di classe'),
-      h('div', { class: 'l-form__riga' }, input, invia),
-      h('small', { id: 'codice-aiuto' }, 'Lo trovi nel gruppo della classe. Resta salvato su questo telefono.')),
-    errore);
+      input,
+      h('small', { id: 'codice-aiuto' }, 'Lo trovi nel gruppo della classe. Verrà ricordato su questo dispositivo.')),
+    mostra, errore, invia);
 
-  const vaiAlCodice = () => { document.getElementById('top-landing')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => input.focus({ preventScroll: true }), 350); };
-
-  const root = h('div', { class: 'landing' },
-    heroLanding(form),
-    sezioneComeFunziona(),
-    sezioneMaterie(),
-    h('section', { class: 'l-close', 'aria-labelledby': 'close-h' },
-      h('div', { class: 'wrap' },
-        h('h2', { class: 'l-close__testo', id: 'close-h' }, 'Il codice è nel gruppo della classe.'),
-        h('button', { class: 'btn btn-primary', type: 'button', onclick: vaiAlCodice }, 'Inserisci il codice'))));
-
-  mount(vistaEl(), root);
-  avviaCardEstrazione(root.querySelector('.d-card'), root.querySelector('.l-art .pausa'));
-  avviaMarquee(root.querySelector('.marquee'), root.querySelector('.pausa-riga'));
-  requestAnimationFrame(() => {
-    animaEntrata(root.querySelector('.l-hero'));
-    root.querySelector('.l-art')?.classList.add('entrata-arte');
-  });
-}
-
-/** Hero "collage": testo e codice a sinistra, l'app vera in una finestra a destra. */
-function heroLanding(form) {
-  const sessione = (giorno, ora, nomi, prossima) => h('div', { class: `d-sess ${prossima ? 'is-next' : ''}` },
-    h('div', { class: 'd-sess__h' }, h('b', {}, giorno), h('small', {}, ora)),
-    nomi.map(([ini, nome, stato]) => h('div', { class: 'd-row' },
-      h('span', { class: 'av' }, ini), h('span', {}, nome), badge(stato))));
-  return h('section', { class: 'l-hero', id: 'top-landing', 'aria-labelledby': 'hero-h' },
-    h('div', { class: 'wrap l-hero__grid' },
-      h('div', { class: 'l-hero__testo' },
-        h('p', { class: 'l-pill' }, h('span', { class: 'mark', 'aria-hidden': 'true' }), 'Classe 5C Informatica'),
-        h('h1', { id: 'hero-h' }, 'Interrogazioni della 5C, estratte a sorte'),
-        h('p', { class: 'l-lead' }, 'Chi è interrogato, in che giorno e a che ora, materia per materia. L\'estrazione la fa il server: tutta la classe vede lo stesso risultato entro un secondo.'),
-        form,
-        h('p', { class: 'l-proof' },
-          h('span', {}, 'Nessun account per i compagni: basta il codice.'),
-          h('a', { href: '#/staff' }, 'Accesso staff'))),
-      h('div', { class: 'l-art', role: 'img', 'aria-label': 'La pagina di Storia dell\'app con le prossime sessioni e i nomi estratti, e la card dell\'ultima estrazione' },
-        h('div', { class: 'd-win', 'aria-hidden': 'true' },
-          h('div', { class: 'd-win__bar' }, h('span', { class: 'd-win__dots' }, h('i'), h('i'), h('i')), h('span', {}, 'Interrogazioni · 5C Informatica')),
-          h('div', { class: 'd-win__body' },
-            h('div', { class: 'd-side' },
-              h('span', { class: 'is-on', style: '--c:#0e7490' }, h('i'), 'Storia'),
-              h('span', { style: '--c:#b45309' }, h('i'), 'Informatica'),
-              h('span', { style: '--c:#be123c' }, h('i'), 'Italiano'),
-              h('span', { style: '--c:#15803d' }, h('i'), 'Matematica'),
-              h('span', { style: '--c:#1d4ed8' }, h('i'), 'Inglese'),
-              h('span', { class: 'd-side__label' }, 'Classe'),
-              h('span', {}, h('i'), 'Il mio nome'),
-              h('span', {}, h('i'), 'Registro')),
-            h('div', { class: 'd-main' },
-              h('div', { class: 'd-main__head' }, h('h4', {}, 'Storia'), h('span', { class: 'd-live' }, 'In tempo reale')),
-              sessione('Venerdì 20 novembre', '3ª ora · 09:50–10:45', [['GR', 'Giulia Romano', 'assegnato'], ['MC', 'Marco Colombo', 'assegnato'], ['SR', 'Sara Ricci', 'assegnato']], true),
-              sessione('Venerdì 13 novembre', '3ª ora · 09:50–10:45', [['LB', 'Luca Bianchi', 'interrogato'], ['AM', 'Alessandro Marino', 'assente']], false)))),
-        h('div', { class: 'd-card', 'aria-hidden': 'true' },
-          h('div', { class: 'd-card__row' }, h('h5', {}, 'Estrazione · 20 novembre'), h('span', { class: 'd-chip', 'data-step': '' }, 'Salvata')),
-          h('div', { class: 'd-line', 'data-step': '' }, h('i', {}, '1'), h('span', {}, 'Giulia Romano')),
-          h('div', { class: 'd-line', 'data-step': '' }, h('i', {}, '2'), h('span', {}, 'Marco Colombo')),
-          h('div', { class: 'd-line', 'data-step': '' }, h('i', {}, '3'), h('span', {}, 'Sara Ricci'))),
-        h('button', { class: 'pausa', type: 'button', 'aria-label': 'Ferma l\'animazione', 'aria-pressed': 'false' }, icon('pausa', 16)))));
-}
-
-function sezioneComeFunziona() {
-  const card = (titolo, testo, descr, pannello) => h('article', {}, h('h3', {}, titolo), h('p', {}, testo), h('div', { class: 'pannello', role: 'img', 'aria-label': descr }, pannello));
-  return h('section', { class: 'l-band', id: 'come', 'aria-labelledby': 'come-h' },
-    h('div', { class: 'wrap' },
-      h('div', { class: 'section-head' },
-        h('h2', { id: 'come-h' }, 'Dall\'estrazione in classe al telefono di tutti. ', h('span', { class: 'muted' }, 'Tre cose che fa l\'app.'))),
-      h('div', { class: 'l-feat' },
-        card('Estrazione a sorte, una volta sola',
-          'Il sorteggio lo fa il server e il risultato resta salvato: non si rifà finché esce il nome giusto.',
-          'Card di un\'estrazione del 20 novembre con tre nomi in ordine',
-          [h('span', { class: 'l-mono' }, 'Estrazione · ven 20 nov · 3ª ora'),
-           h('div', { class: 'riga' }, h('span', {}, '1. Giulia Romano')),
-           h('div', { class: 'riga' }, h('span', {}, '2. Marco Colombo')),
-           h('div', { class: 'riga' }, h('span', {}, '3. Sara Ricci'))]),
-        card('Risultati sul telefono in un secondo',
-          'Chi ha l\'app aperta vede i nomi comparire senza ricaricare. Senza rete resta l\'ultima versione scaricata.',
-          'Due sessioni aggiornate in tempo reale, con lo stato assegnato',
-          [h('span', { class: 'l-mono' }, 'Aggiornato in tempo reale'),
-           h('div', { class: 'riga' }, h('span', {}, 'Storia · 20 novembre'), badge('assegnato')),
-           h('div', { class: 'riga' }, h('span', {}, 'Informatica · 25 novembre'), badge('assegnato'))]),
-        card('Imprevisti scritti nel registro',
-          'Assenze, rinvii e spostamenti finiscono nel registro, con giorno, ora e motivo, visibili a tutti.',
-          'Un interrogato e un assente, con il motivo e la nuova data',
-          [h('div', { class: 'riga' }, h('span', {}, 'Luca Bianchi'), badge('interrogato')),
-           h('div', { class: 'riga' }, h('span', {}, 'Alessandro Marino'), badge('assente')),
-           h('span', { class: 'l-mono' }, 'Motivo: malato · riassegnato al 27/11')]))));
-}
-
-function sezioneMaterie() {
-  const materie = ['Italiano', 'Storia', 'Informatica', 'Sistemi e reti', 'TPSIT', 'Matematica', 'Inglese', 'GPOI', 'Educazione civica'];
-  const riga = [...materie, ...materie].map((m, i) => h('span', { 'aria-hidden': i >= materie.length ? 'true' : null }, m));
-  return h('section', { class: 'l-materie', id: 'materie-l', 'aria-labelledby': 'materie-h' },
-    h('div', { class: 'wrap' },
-      h('div', { class: 'section-head' },
-        h('h2', { id: 'materie-h' }, 'Ogni materia ha le sue date. ', h('span', { class: 'muted' }, 'Ciascuna con il suo calendario, le sue ore e i suoi prof.'))),
-      h('div', { class: 'marquee' }, h('div', { class: 'marquee__track' }, riga)),
-      h('button', { class: 'btn pausa-riga', type: 'button', 'aria-pressed': 'false' }, icon('pausa', 16), 'Ferma lo scorrimento')));
-}
-
-/** Il momento della card: mostra il risultato, lo tiene 1,8 s, poi i tre nomi arrivano a 0,7 s. */
-function avviaCardEstrazione(card, pausa) {
-  if (!card) return;
-  const passi = [...card.querySelectorAll('[data-step]')];
-  const ridotto = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  passi.forEach((p) => p.classList.add('is-in'));
-  if (ridotto) { if (pausa) pausa.hidden = true; return; }
-  let fermo = false;
-  let timer = null;
-  const ciclo = () => {
-    clearTimeout(timer);
-    if (fermo) return;
-    card.classList.add('is-rewinding');
-    passi.forEach((p) => p.classList.remove('is-in'));
-    // Nomi prima, poi "Salvata".
-    const ordine = [...passi.slice(1), passi[0]];
-    ordine.forEach((p, i) => setTimeout(() => { if (!fermo) p.classList.add('is-in'); }, 400 + i * 700));
-    timer = setTimeout(ciclo, 400 + ordine.length * 700 + 1800);
-  };
-  timer = setTimeout(ciclo, 1800);
-  card.parentElement.addEventListener('pointerenter', () => { if (!fermo) ciclo(); });
-  pausa?.addEventListener('click', () => {
-    fermo = !fermo;
-    pausa.setAttribute('aria-pressed', String(fermo));
-    pausa.setAttribute('aria-label', fermo ? 'Riprendi l\'animazione' : 'Ferma l\'animazione');
-    pausa.replaceChildren(icon(fermo ? 'freccia' : 'pausa', 16));
-    if (fermo) { clearTimeout(timer); passi.forEach((p) => p.classList.add('is-in')); } else ciclo();
-  });
-}
-
-function avviaMarquee(marquee, btn) {
-  if (!marquee || !btn) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { btn.hidden = true; return; }
-  btn.addEventListener('click', () => {
-    const ferma = !marquee.classList.contains('is-paused');
-    marquee.classList.toggle('is-paused', ferma);
-    btn.setAttribute('aria-pressed', String(ferma));
-    btn.replaceChildren(icon(ferma ? 'freccia' : 'pausa', 16), ferma ? 'Riprendi lo scorrimento' : 'Ferma lo scorrimento');
-  });
-}
-
-/** Esce dal dispositivo: dimentica il codice e i dati offline. */
-export async function esciDalDispositivo() {
-  const ok = await conferma({ titolo: 'Uscire?', messaggio: 'Il codice di classe verrà dimenticato su questo dispositivo e i dati salvati per l\'uso offline verranno cancellati.', ok: 'Esci' });
-  if (!ok) return;
-  prefs.codice = null;
-  try { await caches.delete('dati-v1'); } catch { /* cache non disponibile */ }
-  vai(sessione.isStaff ? '/' : '/accesso');
+  mount(vistaEl(), h('div', { class: 'accesso' },
+    h('img', { class: 'logo-grande', src: 'icons/icon.svg', alt: '' }),
+    h('h1', {}, 'Interrogazioni 5C'),
+    h('p', { class: 'muted' }, 'Consulta le date delle interrogazioni e chi è stato estratto.'),
+    form,
+    h('p', { class: 'muted piccolo', style: 'margin-top:1rem' },
+      'Sei admin o rappresentante? ', h('a', { href: '#/staff' }, 'Accedi all\'area staff'))));
+  input.focus();
 }
 
 /** Pulsante "Esci da questo dispositivo" (dimentica il codice). */
@@ -212,7 +74,13 @@ function pulsanteEsci() {
   if (!prefs.codice) return null;
   return h('button', {
     class: 'btn btn-ghost btn-sm',
-    onclick: esciDalDispositivo,
+    onclick: async () => {
+      const ok = await conferma({ titolo: 'Uscire?', messaggio: 'Il codice di classe verrà dimenticato su questo dispositivo e i dati salvati per l\'uso offline verranno cancellati.', ok: 'Esci' });
+      if (!ok) return;
+      prefs.codice = null;
+      try { await caches.delete('dati-v1'); } catch { /* cache non disponibile */ }
+      vai(sessione.isStaff ? '/' : '/accesso');
+    },
   }, icon('esci', 16), 'Esci da questo dispositivo');
 }
 
@@ -246,7 +114,7 @@ export function home() {
       if (!d.materie.length) {
         return vuoto('Nessuna materia', 'L\'amministratore non ha ancora creato le materie.', 'libro');
       }
-      return h('div', {}, h('div', { class: 'home-top' }, cardProssima(d.materie), cardMieDate(d.mie)), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
+      return h('div', {}, cardProssima(d.materie), cardMieDate(d.mie), h('h2', { class: 'sottotitolo-sezione' }, 'Tutte le materie'), h('div', { class: 'griglia' }, d.materie.map(cardMateria)));
     },
   });
 }
