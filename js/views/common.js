@@ -22,6 +22,8 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3, schel
   let inCorso = false;
   let daRifare = false;
   let ultimiDati = null;
+  let ultimaImpronta = null;
+  let timerPrimo = null;
 
   async function aggiorna(motivo = 'iniziale') {
     if (!attivo) return;
@@ -36,13 +38,22 @@ export function creaVista(container, { carica, disegna, righeSkeleton = 3, schel
       if (!attivo) return;
       if (dati?.generato_il) segnalaFreschezza(dati.generato_il);
       if (inPausa() && !primo) { inCorso = false; setTimeout(() => aggiorna(motivo), 400); return; }
+      // Dati identici a quelli già mostrati (ping realtime, polling, ritorno
+      // sulla scheda): non ridisegna niente, così la pagina resta ferma.
+      const impronta = JSON.stringify(dati, (k, v) => (k === 'generato_il' ? undefined : v));
+      if (!primo && motivo !== 'azione' && impronta === ultimaImpronta) return;
+      ultimaImpronta = impronta;
       ultimiDati = dati;
       const nodo = disegna(dati);
       if (primo) {
         // Primo caricamento: entrata a cascata degli elementi.
         container.classList.add('primo');
-        setTimeout(() => container.classList.remove('primo'), 1200);
+        clearTimeout(timerPrimo);
+        timerPrimo = setTimeout(() => container.classList.remove('primo'), 1400);
       } else {
+        // Aggiornamento: niente animazioni di entrata, anche se arriva subito.
+        clearTimeout(timerPrimo);
+        container.classList.remove('primo');
         container.classList.add('in-aggiornamento');
       }
       mount(container, nodo);

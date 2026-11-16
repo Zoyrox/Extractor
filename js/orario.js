@@ -58,7 +58,9 @@ export function giorniSuggeriti(orario, subjectId, { settimane = 6, occupate = n
   const utili = orario.slot
     .map((s) => {
       const p = prof.get(s.teacher_id);
-      const stessa = s.subject_id === subjectId;
+      // Ora della materia, oppure ora senza materia ("decide il prof") di un
+      // prof che insegna anche questa (es. Artale: Italiano o Storia).
+      const stessa = s.subject_id === subjectId || (s.subject_id == null && !!p?.materie.includes(subjectId));
       const tramiteProf = !stessa && p?.materie.includes(subjectId);
       if (!stessa && !tramiteProf) return null;
       return { ...s, prof: p?.nome || '', materiaOra: materie.get(s.subject_id)?.nome || '', tramiteProf, ...(ore.get(s.ora) || {}) };

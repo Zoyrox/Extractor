@@ -1528,7 +1528,7 @@ export function staffOrario(_params, query) {
       const k = `${giorno}|${o.ora}`;
       const slot = bozza.slot.get(k) || { giorno, ora: o.ora, subject_id: null, teacher_id: null };
       const selMat = h('select', { 'aria-label': `Materia ${o.ora}ª ora` },
-        h('option', { value: '' }, '—'),
+        h('option', { value: '' }, 'Decide il prof'),
         orario.materie.map((m) => h('option', { value: String(m.id), selected: slot.subject_id === m.id }, m.nome)));
       const disegnaProf = () => {
         const lista = slot.subject_id ? profPerMateria(orario, slot.subject_id) : orario.prof;
